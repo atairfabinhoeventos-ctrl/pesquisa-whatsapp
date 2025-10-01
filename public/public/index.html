@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Pesquisa WhatsApp</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Dashboard da Pesquisa de Satisfação</h1>
+            <p>Resultados atualizados em tempo real</p>
+        </header>
+
+        <main>
+            <section class="metricas">
+                <div class="card">
+                    <h2>Total de Cadastros</h2>
+                    <p id="total-cadastros">0</p>
+                </div>
+                <div class="card">
+                    <h2>Pesquisas Respondidas</h2>
+                    <p id="total-respondidas">0</p>
+                </div>
+                <div class="card">
+                    <h2>Taxa de Resposta</h2>
+                    <p id="taxa-resposta">0%</p>
+                </div>
+            </section>
+
+            <section class="estatisticas-lideres card">
+                <h2>📊 Estatísticas por Líder</h2>
+                <div class="chart-container">
+                    <canvas id="grafico-lideres"></canvas>
+                </div>
+            </section>
+
+            <section class="dados-brutos card">
+                <h2>📋 Visualização dos Cadastros</h2>
+                <div class="table-container">
+                    <table id="tabela-dados">
+                        <thead>
+                            <tr>
+                                <th>Telefone</th>
+                                <th>Evento</th>
+                                <th>Líder</th>
+                                <th>Nota</th>
+                                <th>Data Resposta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="5" style="text-align: center;">Carregando dados...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script src="script.js"></script>
+</body>
+</html>
