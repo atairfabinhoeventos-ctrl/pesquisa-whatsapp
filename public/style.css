@@ -87,3 +87,26 @@ tbody tr:nth-child(even) {
 tbody tr:hover {
     background-color: #e8f4fd;
 }
+
+
+/* Estilos para o card de Ações */
+.acoes button {
+    background-color: #27ae60;
+    color: white;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 5px;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.acoes button:hover {
+    background-color: #229954;
+}
+
+.status {
+    margin-top: 15px;
+    font-style: italic;
+    color: #555;
+}

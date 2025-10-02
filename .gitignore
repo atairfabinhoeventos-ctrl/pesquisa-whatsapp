@@ -1,2 +1,12 @@
+# Dependências do Node
+node_modules/
+
+# Arquivos de sessão do Baileys
+auth_info_baileys/
+
+# Arquivos secretos
 credentials.json
-node_modules
+
+# Logs e arquivos de sistema
+npm-debug.log
+.DS_Store
