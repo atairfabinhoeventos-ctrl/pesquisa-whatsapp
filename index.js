@@ -1,17 +1,19 @@
 // ==================================================================
-// ARQUIVO: index.js (Versão Completa Final - 02/Out/2025)
+// ARQUIVO: index.js (Versão Final com Persistência via Redis)
 // ==================================================================
 
 // 1. IMPORTAÇÕES E CONFIGURAÇÃO
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
 const express = require('express');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
+const Redis = require('ioredis');
 
 const PORT = process.env.PORT || 3000;
 const SPREADSHEET_ID = '1wSHcp496Wwpmcx3ANoF6UWai0qh0D-ccWsC0hSxWRrM';
-const CONVERSATION_TIMEOUT = 3 * 60 * 1000; // 3 minutos em milissegundos
+const CONVERSATION_TIMEOUT = 3 * 60 * 1000; // 3 minutos
 
 let credenciais;
 try {
@@ -20,6 +22,16 @@ try {
     console.error('ERRO FATAL: Arquivo "credentials.json" não encontrado.');
     process.exit(1);
 }
+
+// CONFIGURAÇÃO DO REDIS (para salvar a sessão)
+if (!process.env.UPSTASH_REDIS_URL) {
+    console.error("ERRO FATAL: A variável de ambiente UPSTASH_REDIS_URL não está definida.");
+    // Para testes locais, descomente e cole sua URL aqui:
+    // process.env.UPSTASH_REDIS_URL = "redis://:...@us1-intense-....upstash.io:32014";
+    if (!process.env.UPSTASH_REDIS_URL) process.exit(1);
+}
+const redis = new Redis(process.env.UPSTASH_REDIS_URL);
+const REDIS_SESSION_KEY = "baileys-session";
 
 const app = express();
 app.use(express.static('public'));
@@ -174,9 +186,29 @@ async function iniciarFluxoDePesquisa(contato, remoteJid, cpfDoUsuario) {
 // 3. CONEXÃO E LÓGICA PRINCIPAL DO BOT
 // ==================================================================
 async function connectToWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    let savedState;
+    try {
+        const session = await redis.get(REDIS_SESSION_KEY);
+        if (session) {
+            savedState = JSON.parse(session, (key, value) => {
+                if (value && value.type === 'Buffer' && Array.isArray(value.data)) {
+                    return Buffer.from(value.data);
+                }
+                return value;
+            });
+            console.log("[REDIS] Sessão restaurada do Redis.");
+        }
+    } catch (e) {
+        console.error("[REDIS] Falha ao restaurar sessão:", e);
+    }
+
+    const { version } = await fetchLatestBaileysVersion();
     sock = makeWASocket({
-        auth: state,
+        version,
+        auth: {
+            creds: savedState?.creds || { noiseKey: null, signedIdentityKey: null, signedPreKey: null, registrationId: null, advSecretKey: null, nextPreKeyId: null, firstUnuploadedPreKeyId: null, accountSyncCounter: null, accountSettings: null, appStateSyncKey: {}, appStateVersions: {}, deviceId: null, accountId: null, registered: null, backupToken: null, registration: null, mutualUpgrade: null, signalIdentities: [], me: null, platform: null },
+            keys: savedState?.keys || {},
+        },
         logger: pino({ level: 'silent' }),
         browser: Browsers.macOS('Desktop'),
     });
@@ -188,16 +220,30 @@ async function connectToWhatsApp() {
             qrcode.generate(qr, { small: true });
         }
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) connectToWhatsApp();
+            const statusCode = (lastDisconnect.error = new Boom(lastDisconnect.error))?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            console.log('[WHATSAPP] Conexão fechada. Reconectando:', shouldReconnect);
+            if (shouldReconnect) {
+                connectToWhatsApp();
+            }
         } else if (connection === 'open') {
             console.clear();
             console.log('[WHATSAPP] Conexão aberta e cliente pronto!');
-            if(sock.user) console.log(`[WHATSAPP] Conectado como: ${sock.user.id.split(':')[0]}`);
+            if (sock.user) console.log(`[WHATSAPP] Conectado como: ${sock.user.id.split(':')[0]}`);
         }
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', async () => {
+        const newState = { creds: sock.authState.creds, keys: sock.authState.keys };
+        const json = JSON.stringify(newState, (key, value) => {
+            if (value instanceof Buffer) {
+                return { type: 'Buffer', data: value.toJSON().data };
+            }
+            return value;
+        });
+        await redis.set(REDIS_SESSION_KEY, json);
+        console.log("[REDIS] Sessão salva no Redis.");
+    });
 
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
