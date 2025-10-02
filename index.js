@@ -1,5 +1,5 @@
 // ==================================================================
-// ARQUIVO: index.js (Versão Final com Persistência via Redis)
+// ARQUIVO: index.js (Versão Definitiva com Redis e Código de Pareamento)
 // ==================================================================
 
 // 1. IMPORTAÇÕES E CONFIGURAÇÃO
@@ -8,12 +8,11 @@ const { Boom } = require('@hapi/boom');
 const express = require('express');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const pino = require('pino');
-const qrcode = require('qrcode-terminal');
 const Redis = require('ioredis');
 
 const PORT = process.env.PORT || 3000;
 const SPREADSHEET_ID = '1wSHcp496Wwpmcx3ANoF6UWai0qh0D-ccWsC0hSxWRrM';
-const CONVERSATION_TIMEOUT = 3 * 60 * 1000; // 3 minutos
+const CONVERSATION_TIMEOUT = 3 * 60 * 1000;
 
 let credenciais;
 try {
@@ -23,12 +22,10 @@ try {
     process.exit(1);
 }
 
-// CONFIGURAÇÃO DO REDIS (para salvar a sessão)
+// CONFIGURAÇÃO DO REDIS
 if (!process.env.UPSTASH_REDIS_URL) {
     console.error("ERRO FATAL: A variável de ambiente UPSTASH_REDIS_URL não está definida.");
-    // Para testes locais, descomente e cole sua URL aqui:
-    // process.env.UPSTASH_REDIS_URL = "redis://:...@us1-intense-....upstash.io:32014";
-    if (!process.env.UPSTASH_REDIS_URL) process.exit(1);
+    process.exit(1);
 }
 const redis = new Redis(process.env.UPSTASH_REDIS_URL);
 const REDIS_SESSION_KEY = "baileys-session";
@@ -209,17 +206,28 @@ async function connectToWhatsApp() {
             creds: savedState?.creds || { noiseKey: null, signedIdentityKey: null, signedPreKey: null, registrationId: null, advSecretKey: null, nextPreKeyId: null, firstUnuploadedPreKeyId: null, accountSyncCounter: null, accountSettings: null, appStateSyncKey: {}, appStateVersions: {}, deviceId: null, accountId: null, registered: null, backupToken: null, registration: null, mutualUpgrade: null, signalIdentities: [], me: null, platform: null },
             keys: savedState?.keys || {},
         },
-        logger: pino({ level: 'trace' }),
+        logger: pino({ level: 'silent' }),
         browser: Browsers.macOS('Desktop'),
-        shouldSyncHistoryWithSingleMsg: true,
+        printQRInTerminal: false,
     });
+    
+    if (!sock.authState.creds.registered) {
+        setTimeout(async () => {
+            const phoneNumber = '556235975041'; // SUBSTITUA PELO NÚMERO DO SEU BOT
+            try {
+                const code = await sock.requestPairingCode(phoneNumber);
+                console.log('========================================');
+                console.log('[WHATSAPP] SEU CÓDIGO DE PAREAMENTO É:');
+                console.log(`[WHATSAPP] => ${code.match(/.{1,4}/g).join('-')}`);
+                console.log('========================================');
+            } catch (error) {
+                console.error("Falha ao solicitar código de pareamento. Verifique se o número de telefone foi substituído no código.", error);
+            }
+        }, 3000);
+    }
 
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        if (qr) {
-            console.log('[WHATSAPP] QR Code recebido, escaneie abaixo:');
-            qrcode.generate(qr, { small: true });
-        }
+        const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const statusCode = (lastDisconnect.error = new Boom(lastDisconnect.error))?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
@@ -278,8 +286,7 @@ async function connectToWhatsApp() {
                     const cpfFormatado = formatarCPF(textoMsg);
                     if (!cpfFormatado) {
                         await sock.sendMessage(remoteJid, { text: '❌ CPF inválido. Por favor, digite apenas os 11 números do seu CPF.' });
-                        setConversationTimeout(contato, remoteJid);
-                        return;
+                        setConversationTimeout(contato, remoteJid); return;
                     }
                     state.data.cpf = cpfFormatado;
                     state.stage = 'aguardandoConfirmacaoCPF';
@@ -303,7 +310,7 @@ async function connectToWhatsApp() {
                 } else if (state.stage === 'aguardandoNome') {
                     state.data.nome = textoMsg;
                     state.stage = 'aguardandoTelefone';
-                    await sock.sendMessage(remoteJid, { text: '✅ Nome registrado. Para finalizar, por favor, digite seu número de *telefone com DDD* (ex: 62988887777).' });
+                    await sock.sendMessage(remoteJid, { text: '✅ Nome registrado. Para finalizar, digite seu número de *telefone com DDD* (ex: 62988887777).' });
                     setConversationTimeout(contato, remoteJid);
                 } else if (state.stage === 'aguardandoTelefone') {
                     state.data.telefone = textoMsg.replace(/\D/g, '');
@@ -332,11 +339,7 @@ async function connectToWhatsApp() {
                         const sheetEventos = doc.sheetsByTitle['Eventos'];
                         const rows = await sheetEventos.getRows();
                         const cpfDoUsuario = linhaParaAtualizar['CPF (xxx.xxx.xxx-xx)'];
-                        const pesquisasRestantes = rows.filter(row =>
-                            (row['CPF (xxx.xxx.xxx-xx)'] || '').trim() === cpfDoUsuario &&
-                            (row.PesquisaEnviada || '').toUpperCase() !== 'TRUE' &&
-                            (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL'
-                        );
+                        const pesquisasRestantes = rows.filter(row => (row['CPF (xxx.xxx.xxx-xx)'] || '').trim() === cpfDoUsuario && (row.PesquisaEnviada || '').toUpperCase() !== 'TRUE' && (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL');
                         if (pesquisasRestantes.length > 0) {
                             userState[contato] = { stage: 'aguardandoContinuar', data: { cpf: cpfDoUsuario } };
                             const buttons = [{ buttonId: 'sim_continuar', buttonText: { displayText: '👍 Sim, por favor' }, type: 1 }, { buttonId: 'nao_continuar', buttonText: { displayText: '👎 Não, obrigado' }, type: 1 }];
