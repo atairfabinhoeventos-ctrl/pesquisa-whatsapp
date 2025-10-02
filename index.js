@@ -209,7 +209,7 @@ async function connectToWhatsApp() {
             creds: savedState?.creds || { noiseKey: null, signedIdentityKey: null, signedPreKey: null, registrationId: null, advSecretKey: null, nextPreKeyId: null, firstUnuploadedPreKeyId: null, accountSyncCounter: null, accountSettings: null, appStateSyncKey: {}, appStateVersions: {}, deviceId: null, accountId: null, registered: null, backupToken: null, registration: null, mutualUpgrade: null, signalIdentities: [], me: null, platform: null },
             keys: savedState?.keys || {},
         },
-        logger: pino({ level: 'silent' }),
+        logger: pino({ level: 'trace' }),
         browser: Browsers.macOS('Desktop'),
     });
 
