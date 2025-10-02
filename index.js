@@ -211,6 +211,7 @@ async function connectToWhatsApp() {
         },
         logger: pino({ level: 'trace' }),
         browser: Browsers.macOS('Desktop'),
+        shouldSyncHistoryWithSingleMsg: true,
     });
 
     sock.ev.on('connection.update', (update) => {
