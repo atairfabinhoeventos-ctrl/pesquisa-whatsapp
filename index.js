@@ -180,13 +180,17 @@ async function iniciarFluxoDePesquisa(contato, remoteJid, cpfDoUsuario) {
 }
 
 // ==================================================================
-// 3. CONEXÃO E LÓGICA PRINCIPAL DO BOT
+// 3. CONEXÃO E LÓGICA PRINCIPAL DO BOT (VERSÃO DE FORÇA BRUTA)
 // ==================================================================
 async function connectToWhatsApp() {
+    // Adicionamos uma variável de controle para a primeira execução
+    let isFirstRun = true;
+    
     let savedState;
     try {
         const session = await redis.get(REDIS_SESSION_KEY);
-        if (session) {
+        // SÓ TENTAMOS RESTAURAR A SESSÃO SE NÃO FOR A PRIMEIRA EXECUÇÃO
+        if (session && !isFirstRun) {
             savedState = JSON.parse(session, (key, value) => {
                 if (value && value.type === 'Buffer' && Array.isArray(value.data)) {
                     return Buffer.from(value.data);
@@ -194,10 +198,15 @@ async function connectToWhatsApp() {
                 return value;
             });
             console.log("[REDIS] Sessão restaurada do Redis.");
+        } else {
+            console.log("[SISTEMA] Ignorando sessão salva na primeira inicialização para forçar novo login.");
         }
     } catch (e) {
-        console.error("[REDIS] Falha ao restaurar sessão:", e);
+        console.error("[REDIS] Falha ao processar sessão:", e);
     }
+    
+    // Marca que a primeira execução já passou
+    isFirstRun = false; 
 
     const { version } = await fetchLatestBaileysVersion();
     sock = makeWASocket({
@@ -213,7 +222,7 @@ async function connectToWhatsApp() {
     
     if (!sock.authState.creds.registered) {
         setTimeout(async () => {
-            const phoneNumber = '556235975041'; // SUBSTITUA PELO NÚMERO DO SEU BOT
+            const phoneNumber = '556235975041'; // SEU NÚMERO DE BOT AQUI
             try {
                 const code = await sock.requestPairingCode(phoneNumber);
                 console.log('========================================');
@@ -221,10 +230,11 @@ async function connectToWhatsApp() {
                 console.log(`[WHATSAPP] => ${code.match(/.{1,4}/g).join('-')}`);
                 console.log('========================================');
             } catch (error) {
-                console.error("Falha ao solicitar código de pareamento. Verifique se o número de telefone foi substituído no código.", error);
+                console.error("Falha ao solicitar código de pareamento.", error);
             }
-        }, 3000);
+        }, 5000); // Aumentamos o tempo para 5 segundos
     }
+
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
@@ -254,6 +264,7 @@ async function connectToWhatsApp() {
         console.log("[REDIS] Sessão salva no Redis.");
     });
 
+    
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
