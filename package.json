@@ -1,7 +1,7 @@
 {
-  "name": "pesquisa-whatsapp-webhook",
+  "name": "pesquisa-whatsapp-meta-api",
   "version": "1.0.0",
-  "description": "Servidor temporário para verificação de webhook da Meta",
+  "description": "Bot de pesquisa com a API Oficial do WhatsApp",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,6 +9,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.19.2"
+    "axios": "^1.7.2",
+    "express": "^4.19.2",
+    "google-spreadsheet": "3.3.0"
   }
 }
