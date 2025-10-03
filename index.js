@@ -1,5 +1,5 @@
 // ==================================================================
-// ARQUIVO: index.js (Versão Completa Final para Servidor VM com Baileys)
+// ARQUIVO: index.js (Versão Final Completa com Validação de CPF Aprimorada)
 // ==================================================================
 
 // 1. IMPORTAÇÕES E CONFIGURAÇÃO
@@ -12,7 +12,7 @@ const qrcode = require('qrcode-terminal');
 
 const PORT = process.env.PORT || 3000;
 const SPREADSHEET_ID = '1wSHcp496Wwpmcx3ANoF6UWai0qh0D-ccWsC0hSxWRrM';
-const CONVERSATION_TIMEOUT = 5 * 60 * 1000; // 5 minutos
+const CONVERSATION_TIMEOUT = 5 * 60 * 1000;
 
 let credenciais;
 try {
@@ -34,7 +34,39 @@ let userTimeouts = {};
 function clearConversationTimeout(contato) { if (userTimeouts[contato]) { clearTimeout(userTimeouts[contato]); delete userTimeouts[contato]; } }
 function setConversationTimeout(contato, remoteJid) { clearConversationTimeout(contato); userTimeouts[contato] = setTimeout(() => { delete userState[contato]; delete userTimeouts[contato]; console.log(`[TIMEOUT] Conversa com ${contato} encerrada.`); sock.sendMessage(remoteJid, { text: '⏳ Sua sessão foi encerrada por inatividade. Envie uma nova mensagem se quiser recomeçar. 👋' }); }, CONVERSATION_TIMEOUT); }
 async function loadSpreadsheet() { const doc = new GoogleSpreadsheet(SPREADSHEET_ID); await doc.useServiceAccountAuth(credenciais); await doc.loadInfo(); return doc; }
-function formatarCPF(cpf) { const cpfLimpo = cpf.replace(/\D/g, ''); if (cpfLimpo.length !== 11) return null; return cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
+
+function validarEFormatarCPF(cpf) {
+    const cpfLimpo = String(cpf).replace(/\D/g, '');
+
+    if (cpfLimpo.length !== 11) {
+        return { valido: false, motivo: 'O CPF precisa conter 11 dígitos.' };
+    }
+
+    if (/^(\d)\1{10}$/.test(cpfLimpo)) {
+        return { valido: false, motivo: 'CPFs com todos os dígitos repetidos são inválidos.' };
+    }
+
+    let soma = 0;
+    let resto;
+    for (let i = 1; i <= 9; i++) soma += parseInt(cpfLimpo.substring(i - 1, i)) * (11 - i);
+    resto = (soma * 10) % 11;
+    if (resto === 10 || resto === 11) resto = 0;
+    if (resto !== parseInt(cpfLimpo.substring(9, 10))) {
+        return { valido: false, motivo: 'O CPF informado é inválido (dígito verificador incorreto).' };
+    }
+
+    soma = 0;
+    for (let i = 1; i <= 10; i++) soma += parseInt(cpfLimpo.substring(i - 1, i)) * (12 - i);
+    resto = (soma * 10) % 11;
+    if (resto === 10 || resto === 11) resto = 0;
+    if (resto !== parseInt(cpfLimpo.substring(10, 11))) {
+        return { valido: false, motivo: 'O CPF informado é inválido (dígito verificador incorreto).' };
+    }
+
+    const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    return { valido: true, cpfFormatado: cpfFormatado, motivo: null };
+}
+
 async function verificarStatusAdmin(contato) { try { const doc = await loadSpreadsheet(); const sheetCadastros = doc.sheetsByTitle['Cadastros']; if (!sheetCadastros) return false; const rowsCadastros = await sheetCadastros.getRows(); const usuarioCadastrado = rowsCadastros.find(row => row.IDContatoWhatsApp === contato); if (!usuarioCadastrado) return false; const cpfDoUsuario = usuarioCadastrado['CPF (xxx.xxx.xxx-xx)']; if (!cpfDoUsuario) return false; const sheetEventos = doc.sheetsByTitle['Eventos']; if (!sheetEventos) return false; const rowsEventos = await sheetEventos.getRows(); const isAdminEntry = rowsEventos.find(row => (row['CPF (xxx.xxx.xxx-xx)'] || '').trim() === cpfDoUsuario && (row.NomeEvento || '').trim() === 'ADMINISTRACAOGERAL'); return !!isAdminEntry; } catch (error) { console.error("Erro ao verificar status de admin:", error); return false; } }
 async function gerarRelatorioDeLideres() { const doc = await loadSpreadsheet(); const sheetEventos = doc.sheetsByTitle['Eventos']; const rows = await sheetEventos.getRows(); const respondidas = rows.filter(row => (row.PesquisaEnviada || '').toUpperCase() === 'TRUE' && row.Nota && (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL'); const dadosLideres = respondidas.reduce((acc, row) => { const lider = row.NomeLider; const nota = parseInt(row.Nota); if (!lider || isNaN(nota)) return acc; if (!acc[lider]) { acc[lider] = { lider: lider, notas: [], totalVotos: 0, media: 0 }; } acc[lider].notas.push(nota); acc[lider].totalVotos++; return acc; }, {}); const ranking = Object.values(dadosLideres).map(liderData => { const soma = liderData.notas.reduce((a, b) => a + b, 0); liderData.media = (soma / liderData.totalVotos).toFixed(2); delete liderData.notas; return liderData; }); ranking.sort((a, b) => b.media - a.media); return ranking; }
 function formatarRelatorioParaWhatsApp(ranking) { let relatorio = '📊 *Relatório de Desempenho dos Líderes* 📊\n\n'; const medalhas = ['🥇', '🥈', '🥉']; if (ranking.length === 0) { return 'Nenhuma avaliação foi computada ainda para gerar um relatório.'; } ranking.forEach((lider, index) => { const posicao = index + 1; const medalha = medalhas[index] || `${posicao}️⃣`; relatorio += `${medalha} *${lider.lider}*\n`; relatorio += `   - Nota Média: *${lider.media}*\n`; relatorio += `   - Total de Votos: *${lider.totalVotos}*\n\n`; }); return relatorio; }
@@ -74,12 +106,10 @@ async function connectToWhatsApp() {
             const footer = '\n\n\n*_Fabinho Eventos_*';
             const resposta = textoMsg.toLowerCase();
 
-            // Roteador de Lógica Principal
             if (isAdmin) {
                 if (!state || !state.stage?.startsWith('admin_')) {
                     userState[contato] = { stage: 'admin_menu' };
-                    const menuAdmin = 'Olá, Administrador! 👋 Selecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa';
-                    await sock.sendMessage(remoteJid, { text: menuAdmin });
+                    await sock.sendMessage(remoteJid, { text: 'Olá, Administrador! 👋 Selecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa' });
                     setConversationTimeout(contato, remoteJid);
                 }
                 else if (state.stage === 'admin_menu') {
@@ -87,12 +117,11 @@ async function connectToWhatsApp() {
                         delete userState[contato];
                         await sock.sendMessage(remoteJid, { text: '🔍 Gerando relatório, por favor, aguarde...' });
                         const ranking = await gerarRelatorioDeLideres();
-                        const relatorioFormatado = formatarRelatorioParaWhatsApp(ranking);
-                        await sock.sendMessage(remoteJid, { text: relatorioFormatado });
+                        await sock.sendMessage(remoteJid, { text: formatarRelatorioParaWhatsApp(ranking) });
                     } else if (textoMsg === '2') {
                         state.stage = 'admin_aguardando_cpfs';
                         state.data = {};
-                        await sock.sendMessage(remoteJid, { text: '📝 Certo! Por favor, envie a lista de CPFs dos participantes. Você pode separar por vírgula, espaço ou um por linha.' });
+                        await sock.sendMessage(remoteJid, { text: '📝 Certo! Por favor, envie a lista de CPFs dos participantes. Você pode separar por vírgula, espaço ou ter um por linha.' });
                         setConversationTimeout(contato, remoteJid);
                     } else {
                         await sock.sendMessage(remoteJid, { text: "Opção inválida. Por favor, responda com `1` ou `2`." });
@@ -100,17 +129,35 @@ async function connectToWhatsApp() {
                     }
                 }
                 else if (state.stage === 'admin_aguardando_cpfs') {
-                    const cpfsBrutos = textoMsg.match(/\d{11,}/g) || [];
-                    const cpfsFormatados = cpfsBrutos.map(formatarCPF).filter(cpf => cpf !== null);
-                    if (cpfsFormatados.length === 0) {
-                        await sock.sendMessage(remoteJid, { text: '❌ Nenhum CPF válido encontrado. Por favor, envie uma lista de CPFs (apenas números).' });
-                        setConversationTimeout(contato, remoteJid);
-                        return;
+                    const cpfCandidates = textoMsg.split(/[\s,;\n]+/);
+                    const cpfsValidos = [];
+                    const cpfsInvalidos = [];
+                    for (const candidate of cpfCandidates) {
+                        if (candidate.trim() === '') continue;
+                        const resultadoValidacao = validarEFormatarCPF(candidate);
+                        if (resultadoValidacao.valido) {
+                            cpfsValidos.push(resultadoValidacao.cpfFormatado);
+                        } else {
+                            cpfsInvalidos.push({ original: candidate, motivo: resultadoValidacao.motivo });
+                        }
                     }
-                    state.data.cpfs = cpfsFormatados;
-                    state.stage = 'admin_aguardando_nome_evento';
-                    await sock.sendMessage(remoteJid, { text: `✅ ${cpfsFormatados.length} CPFs válidos encontrados. Agora, qual o *Nome do Evento*?` });
-                    setConversationTimeout(contato, remoteJid);
+                    let responseText = '';
+                    if (cpfsValidos.length > 0) { responseText += `✅ ${cpfsValidos.length} CPFs válidos foram processados e formatados.\n\n`; }
+                    if (cpfsInvalidos.length > 0) {
+                        responseText += `⚠️ Os seguintes ${cpfsInvalidos.length} itens foram ignorados:\n`;
+                        cpfsInvalidos.forEach(invalido => { responseText += `- "${invalido.original}" (Motivo: ${invalido.motivo})\n`; });
+                        responseText += '\n';
+                    }
+                    if (cpfsValidos.length > 0) {
+                        state.data.cpfs = cpfsValidos;
+                        state.stage = 'admin_aguardando_nome_evento';
+                        responseText += 'Agora, por favor, digite o *Nome do Evento*.';
+                        await sock.sendMessage(remoteJid, { text: responseText });
+                        setConversationTimeout(contato, remoteJid);
+                    } else {
+                        await sock.sendMessage(remoteJid, { text: '❌ Nenhum CPF válido foi encontrado na sua mensagem. Por favor, envie a lista de CPFs novamente.' });
+                        setConversationTimeout(contato, remoteJid);
+                    }
                 }
                 else if (state.stage === 'admin_aguardando_nome_evento') {
                     state.data.nomeEvento = textoMsg;
@@ -129,23 +176,22 @@ async function connectToWhatsApp() {
                     await sock.sendMessage(remoteJid, { text: `Salvando... ⏳` });
                     const doc = await loadSpreadsheet();
                     const sheetEventos = doc.sheetsByTitle['Eventos'];
-                    const novasLinhas = state.data.cpfs.map(cpf => ({
-                        'CPF (xxx.xxx.xxx-xx)': cpf,
-                        'NomeEvento': state.data.nomeEvento,
-                        'NomeLider': state.data.nomeLider,
-                        'DataEvento': state.data.dataEvento,
-                    }));
+                    const novasLinhas = state.data.cpfs.map(cpf => ({ 'CPF (xxx.xxx.xxx-xx)': cpf, 'NomeEvento': state.data.nomeEvento, 'NomeLider': state.data.nomeLider, 'DataEvento': state.data.dataEvento }));
                     await sheetEventos.addRows(novasLinhas);
                     delete userState[contato];
                     await sock.sendMessage(remoteJid, { text: `🎉 *Sucesso!* ${state.data.cpfs.length} participantes foram cadastrados para a pesquisa do evento "${state.data.nomeEvento}".${footer}` });
                 }
             } else if (state) {
                 if (state.stage === 'aguardandoCPF') {
-                    const cpfFormatado = formatarCPF(textoMsg);
-                    if (!cpfFormatado) { await sock.sendMessage(remoteJid, { text: '❌ CPF inválido. Por favor, digite apenas os 11 números.' }); setConversationTimeout(contato, remoteJid); return; }
-                    state.data.cpf = cpfFormatado;
+                    const resultadoValidacao = validarEFormatarCPF(textoMsg);
+                    if (!resultadoValidacao.valido) {
+                        await sock.sendMessage(remoteJid, { text: `❌ CPF inválido. ${resultadoValidacao.motivo} Por favor, tente novamente.` });
+                        setConversationTimeout(contato, remoteJid);
+                        return;
+                    }
+                    state.data.cpf = resultadoValidacao.cpfFormatado;
                     state.stage = 'aguardandoConfirmacaoCPF';
-                    await sock.sendMessage(remoteJid, { text: `📄 O CPF digitado foi: *${cpfFormatado}*. Está correto? (Responda 'Sim' ou 'Não')` });
+                    await sock.sendMessage(remoteJid, { text: `📄 O CPF digitado foi: *${resultadoValidacao.cpfFormatado}*. Está correto? (Responda 'Sim' ou 'Não')` });
                     setConversationTimeout(contato, remoteJid);
                 } else if (state.stage === 'aguardandoConfirmacaoCPF') {
                     if (['sim', 's', 'correto'].includes(resposta)) {
@@ -183,13 +229,11 @@ async function connectToWhatsApp() {
                         linhaParaAtualizar.DataResposta = new Date().toLocaleDateString('pt-BR');
                         linhaParaAtualizar.PesquisaEnviada = 'TRUE';
                         await linhaParaAtualizar.save();
-                        
                         const cpfDoUsuario = linhaParaAtualizar['CPF (xxx.xxx.xxx-xx)'];
                         const doc = await loadSpreadsheet();
                         const sheetEventos = doc.sheetsByTitle['Eventos'];
                         const rows = await sheetEventos.getRows();
                         const pesquisasRestantes = rows.filter(row => (row['CPF (xxx.xxx.xxx-xx)'] || '').trim() === cpfDoUsuario && (row.PesquisaEnviada || '').toUpperCase() !== 'TRUE' && (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL');
-
                         if (pesquisasRestantes.length > 0) {
                             userState[contato] = { stage: 'aguardandoContinuar', data: { cpf: cpfDoUsuario } };
                             const perguntaContinuar = `✅ Avaliação registrada! Notamos que você tem mais pesquisas pendentes. Deseja avaliar outro evento agora? (Responda 'Sim' ou 'Não')`;
