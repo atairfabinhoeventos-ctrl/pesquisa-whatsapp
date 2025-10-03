@@ -1,7 +1,7 @@
 {
-  "name": "pesquisa-whatsapp-meta-api",
+  "name": "pesquisa-whatsapp-aws",
   "version": "1.0.0",
-  "description": "Bot de pesquisa com a API Oficial do WhatsApp",
+  "description": "Bot de pesquisa de satisfação com Baileys para AWS",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,8 +9,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "axios": "^1.7.2",
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "6.6.0",
     "express": "^4.19.2",
-    "google-spreadsheet": "3.3.0"
+    "google-spreadsheet": "3.3.0",
+    "pm2": "^5.4.0",
+    "qrcode-terminal": "^0.12.0"
   }
 }
