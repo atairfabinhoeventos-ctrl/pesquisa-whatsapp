@@ -10,3 +10,6 @@ credentials.json
 # Logs e arquivos de sistema
 npm-debug.log
 .DS_Store
+
+# informação
+chave-bot-aws/
