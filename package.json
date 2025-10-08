@@ -1,7 +1,7 @@
 {
-  "name": "pesquisa-whatsapp-aws",
+  "name": "pesquisa-whatsapp-aws-redis",
   "version": "1.0.0",
-  "description": "Bot de pesquisa de satisfação com Baileys para AWS",
+  "description": "Bot de pesquisa com Baileys e persistência Redis para AWS",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -13,7 +13,9 @@
     "@whiskeysockets/baileys": "6.6.0",
     "express": "^4.19.2",
     "google-spreadsheet": "3.3.0",
+    "ioredis": "^5.4.1",
     "pm2": "^5.4.0",
+    "pino": "^9.1.0",
     "qrcode-terminal": "^0.12.0"
   }
 }
