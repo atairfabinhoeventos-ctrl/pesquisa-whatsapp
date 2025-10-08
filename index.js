@@ -339,7 +339,7 @@ async function connectToWhatsApp() {
             const resposta = textoMsg.toLowerCase();
 
             // Roteador de Lógica Principal por Perfil
-            if (perfil === 'ADMIN_GERAL' || perfil === 'LIDER') {
+            if (perfil === 'ADMIN_GERAL' || perfil === 'LIDER_EVENTO') {
                 const menuAdmin = `Olá, ${usuario.NomeCompleto.split(' ')[0]}! 👋\n*Perfil: ${perfil}*\n\nSelecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa\n*3.* Alterar Perfil de Usuário\n*4.* Gerenciar Blacklist\n*0.* Sair`;
                 
                 if (!state || !state.stage?.startsWith('admin_')) {
