@@ -1,5 +1,5 @@
 // ==================================================================
-// ARQUIVO: index.js (Versão Final com Perfis, Blacklist e Relatórios)
+// ARQUIVO: index.js (Versão Final Completa)
 // BLOCO 1 de 4: Importações e Configurações Iniciais
 // ==================================================================
 
@@ -108,8 +108,7 @@ async function obterUsuario(contato) {
 
 const parseDate = (dateString) => {
     const parts = String(dateString).split('/');
-    if (parts.length !== 3) return new Date(0); // Retorna uma data inválida se o formato estiver errado
-    // Formato DD/MM/AAAA
+    if (parts.length !== 3) return new Date(0);
     return new Date(parts[2], parts[1] - 1, parts[0]);
 };
 
@@ -267,7 +266,7 @@ async function iniciarFluxoDePesquisa(contato, remoteJid, usuario) {
         const pesquisasPendentes = rowsEventos.filter(row => (row['CPF (xxx.xxx.xxx-xx)'] || '').trim() === cpfDoUsuario && (row.PesquisaEnviada || '').toUpperCase() !== 'TRUE' && (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL');
         const footer = '\n\n\n*_Fabinho Eventos_*';
         if (pesquisasPendentes.length === 0) {
-            const msg = `Olá, ${usuario.NomeCompleto.split(' ')[0]}! 👋\n\nVerificamos aqui e não há pesquisas pendentes для você no momento.\n\nPara ficar por dentro das novidades e futuros eventos, siga nosso Instagram!\n➡️ https://www.instagram.com/eventos.fabinho/\n\n${footer}`;
+            const msg = `Olá, ${usuario.NomeCompleto.split(' ')[0]}! 👋\n\nVerificamos aqui e não há pesquisas pendentes para você no momento.\n\nPara ficar por dentro das novidades e futuros eventos, siga nosso Instagram!\n➡️ https://www.instagram.com/eventos.fabinho/\n\n${footer}`;
             await sock.sendMessage(remoteJid, { text: msg });
             delete userState[contato];
             return;
@@ -557,7 +556,7 @@ async function connectToWhatsApp() {
                 }
             }
             
-            if (state && !perfil) { // Lógica de cadastro para quem ainda não tem perfil
+            if ((state && !perfil) || (state && (perfil === 'FREELANCER' || perfil === 'COORDENADOR'))) {
                 if (state.stage === 'aguardandoCPF') {
                     const resultadoValidacao = validarEFormatarCPF(textoMsg);
                     if (!resultadoValidacao.valido) { await sock.sendMessage(remoteJid, { text: `❌ CPF inválido. ${resultadoValidacao.motivo} Por favor, tente novamente.` }); setConversationTimeout(contato, remoteJid); return; }
@@ -645,7 +644,6 @@ async function connectToWhatsApp() {
                 }
             }
             else if (!usuario) {
-                // NÚMERO TOTALMENTE NOVO E SEM ESTADO
                 userState[contato] = { stage: 'aguardandoCPF', data: {} };
                 const msgBoasVindas = '*FABINHO EVENTOS*\n\nOlá! 👋 Para acessar nosso sistema de pesquisas e eventos, precisamos fazer um rápido cadastro.\n\nPor favor, digite seu *CPF* (apenas os números).';
                 await sock.sendMessage(remoteJid, { text: msgBoasVindas });
