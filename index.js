@@ -339,6 +339,7 @@ async function connectToWhatsApp() {
         try {
             const usuario = await obterUsuario(contato);
             const perfil = (usuario?.Perfil || '').toUpperCase();
+            console.log(`[DEBUG PERFIL] Contato: ${contato} | Usuário Encontrado: ${!!usuario} | Perfil Lido: "${perfil}"`);
             const state = userState[contato];
             const footer = '\n\n\n*_Fabinho Eventos_*';
             const resposta = textoMsg.toLowerCase();
