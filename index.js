@@ -1,5 +1,5 @@
 // ==================================================================
-// ARQUIVO: index.js (Versão Final Completa com Validação de CPF Aprimorada)
+// ARQUIVO: index.js (Versão Completa Final com Relatórios Avançados)
 // ==================================================================
 
 // 1. IMPORTAÇÕES E CONFIGURAÇÃO
@@ -34,42 +34,22 @@ let userTimeouts = {};
 function clearConversationTimeout(contato) { if (userTimeouts[contato]) { clearTimeout(userTimeouts[contato]); delete userTimeouts[contato]; } }
 function setConversationTimeout(contato, remoteJid) { clearConversationTimeout(contato); userTimeouts[contato] = setTimeout(() => { delete userState[contato]; delete userTimeouts[contato]; console.log(`[TIMEOUT] Conversa com ${contato} encerrada.`); sock.sendMessage(remoteJid, { text: '⏳ Sua sessão foi encerrada por inatividade. Envie uma nova mensagem se quiser recomeçar. 👋' }); }, CONVERSATION_TIMEOUT); }
 async function loadSpreadsheet() { const doc = new GoogleSpreadsheet(SPREADSHEET_ID); await doc.useServiceAccountAuth(credenciais); await doc.loadInfo(); return doc; }
-
-function validarEFormatarCPF(cpf) {
-    const cpfLimpo = String(cpf).replace(/\D/g, '');
-
-    if (cpfLimpo.length !== 11) {
-        return { valido: false, motivo: 'O CPF precisa conter 11 dígitos.' };
-    }
-
-    if (/^(\d)\1{10}$/.test(cpfLimpo)) {
-        return { valido: false, motivo: 'CPFs com todos os dígitos repetidos são inválidos.' };
-    }
-
-    let soma = 0;
-    let resto;
-    for (let i = 1; i <= 9; i++) soma += parseInt(cpfLimpo.substring(i - 1, i)) * (11 - i);
-    resto = (soma * 10) % 11;
-    if (resto === 10 || resto === 11) resto = 0;
-    if (resto !== parseInt(cpfLimpo.substring(9, 10))) {
-        return { valido: false, motivo: 'O CPF informado é inválido (dígito verificador incorreto).' };
-    }
-
-    soma = 0;
-    for (let i = 1; i <= 10; i++) soma += parseInt(cpfLimpo.substring(i - 1, i)) * (12 - i);
-    resto = (soma * 10) % 11;
-    if (resto === 10 || resto === 11) resto = 0;
-    if (resto !== parseInt(cpfLimpo.substring(10, 11))) {
-        return { valido: false, motivo: 'O CPF informado é inválido (dígito verificador incorreto).' };
-    }
-
-    const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    return { valido: true, cpfFormatado: cpfFormatado, motivo: null };
-}
-
+function validarEFormatarCPF(cpf) { const cpfLimpo = String(cpf).replace(/\D/g, ''); if (cpfLimpo.length !== 11) { return { valido: false, motivo: 'O CPF precisa conter 11 dígitos.' }; } if (/^(\d)\1{10}$/.test(cpfLimpo)) { return { valido: false, motivo: 'CPFs com todos os dígitos repetidos são inválidos.' }; } let soma = 0; let resto; for (let i = 1; i <= 9; i++) soma += parseInt(cpfLimpo.substring(i - 1, i)) * (11 - i); resto = (soma * 10) % 11; if (resto === 10 || resto === 11) resto = 0; if (resto !== parseInt(cpfLimpo.substring(9, 10))) { return { valido: false, motivo: 'O CPF informado é inválido (dígito verificador incorreto).' }; } soma = 0; for (let i = 1; i <= 10; i++) soma += parseInt(cpfLimpo.substring(i - 1, i)) * (12 - i); resto = (soma * 10) % 11; if (resto === 10 || resto === 11) resto = 0; if (resto !== parseInt(cpfLimpo.substring(10, 11))) { return { valido: false, motivo: 'O CPF informado é inválido (dígito verificador incorreto).' }; } const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); return { valido: true, cpfFormatado: cpfFormatado, motivo: null }; }
 async function verificarStatusAdmin(contato) { try { const doc = await loadSpreadsheet(); const sheetCadastros = doc.sheetsByTitle['Cadastros']; if (!sheetCadastros) return false; const rowsCadastros = await sheetCadastros.getRows(); const usuarioCadastrado = rowsCadastros.find(row => row.IDContatoWhatsApp === contato); if (!usuarioCadastrado) return false; const cpfDoUsuario = usuarioCadastrado['CPF (xxx.xxx.xxx-xx)']; if (!cpfDoUsuario) return false; const sheetEventos = doc.sheetsByTitle['Eventos']; if (!sheetEventos) return false; const rowsEventos = await sheetEventos.getRows(); const isAdminEntry = rowsEventos.find(row => (row['CPF (xxx.xxx.xxx-xx)'] || '').trim() === cpfDoUsuario && (row.NomeEvento || '').trim() === 'ADMINISTRACAOGERAL'); return !!isAdminEntry; } catch (error) { console.error("Erro ao verificar status de admin:", error); return false; } }
-async function gerarRelatorioDeLideres() { const doc = await loadSpreadsheet(); const sheetEventos = doc.sheetsByTitle['Eventos']; const rows = await sheetEventos.getRows(); const respondidas = rows.filter(row => (row.PesquisaEnviada || '').toUpperCase() === 'TRUE' && row.Nota && (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL'); const dadosLideres = respondidas.reduce((acc, row) => { const lider = row.NomeLider; const nota = parseInt(row.Nota); if (!lider || isNaN(nota)) return acc; if (!acc[lider]) { acc[lider] = { lider: lider, notas: [], totalVotos: 0, media: 0 }; } acc[lider].notas.push(nota); acc[lider].totalVotos++; return acc; }, {}); const ranking = Object.values(dadosLideres).map(liderData => { const soma = liderData.notas.reduce((a, b) => a + b, 0); liderData.media = (soma / liderData.totalVotos).toFixed(2); delete liderData.notas; return liderData; }); ranking.sort((a, b) => b.media - a.media); return ranking; }
-function formatarRelatorioParaWhatsApp(ranking) { let relatorio = '📊 *Relatório de Desempenho dos Líderes* 📊\n\n'; const medalhas = ['🥇', '🥈', '🥉']; if (ranking.length === 0) { return 'Nenhuma avaliação foi computada ainda para gerar um relatório.'; } ranking.forEach((lider, index) => { const posicao = index + 1; const medalha = medalhas[index] || `${posicao}️⃣`; relatorio += `${medalha} *${lider.lider}*\n`; relatorio += `   - Nota Média: *${lider.media}*\n`; relatorio += `   - Total de Votos: *${lider.totalVotos}*\n\n`; }); return relatorio; }
+
+// --- NOVAS FUNÇÕES DE RELATÓRIO ---
+const parseDate = (dateString) => { const parts = String(dateString).split('/'); if(parts.length !== 3) return new Date(0); return new Date(parts[2], parts[1] - 1, parts[0]); };
+async function getAnsweredSurveys() { const doc = await loadSpreadsheet(); const sheetEventos = doc.sheetsByTitle['Eventos']; const rows = await sheetEventos.getRows(); return rows.filter(row => (row.PesquisaEnviada || '').toUpperCase() === 'TRUE' && row.Nota && (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL'); }
+async function getAllSurveys() { const doc = await loadSpreadsheet(); const sheetEventos = doc.sheetsByTitle['Eventos']; const rows = await sheetEventos.getRows(); return rows.filter(row => (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL'); }
+
+async function gerarRankingGeral() { const respondidas = await getAnsweredSurveys(); const dadosLideres = respondidas.reduce((acc, row) => { const lider = row.NomeLider; const nota = parseInt(row.Nota); if (!lider || isNaN(nota)) return acc; if (!acc[lider]) { acc[lider] = { lider: lider, notas: [], totalVotos: 0, media: 0 }; } acc[lider].notas.push(nota); acc[lider].totalVotos++; return acc; }, {}); const ranking = Object.values(dadosLideres).map(liderData => { const soma = liderData.notas.reduce((a, b) => a + b, 0); liderData.media = (soma / liderData.totalVotos).toFixed(2); delete liderData.notas; return liderData; }); ranking.sort((a, b) => b.media - a.media); return ranking; }
+async function gerarResultadoPorEvento() { const respondidas = await getAnsweredSurveys(); const dadosEventos = respondidas.reduce((acc, row) => { const evento = row.NomeEvento; const nota = parseInt(row.Nota); if (!evento || isNaN(nota) || !row.DataEvento) return acc; if (!acc[evento]) { acc[evento] = { evento: evento, notas: [], totalVotos: 0, media: 0, data: parseDate(row.DataEvento) }; } acc[evento].notas.push(nota); acc[evento].totalVotos++; return acc; }, {}); const resultado = Object.values(dadosEventos).map(eventoData => { const soma = eventoData.notas.reduce((a, b) => a + b, 0); eventoData.media = (soma / eventoData.totalVotos).toFixed(2); delete eventoData.notas; return eventoData; }); resultado.sort((a, b) => b.data - a.data); return resultado; }
+async function gerarRelatorioDeAdesao() { const todas = await getAllSurveys(); const dadosAdesao = todas.reduce((acc, row) => { const evento = row.NomeEvento; if (!evento || !row.DataEvento) return acc; const [dia, mes, ano] = row.DataEvento.split('/'); if (!mes || !ano) return acc; const chaveMes = `${String(mes).padStart(2, '0')}/${ano}`; if (!acc[chaveMes]) { acc[chaveMes] = {}; } if (!acc[chaveMes][evento]) { acc[chaveMes][evento] = { cadastradas: 0, respondidas: 0, data: parseDate(row.DataEvento) }; } acc[chaveMes][evento].cadastradas++; if ((row.PesquisaEnviada || '').toUpperCase() === 'TRUE') { acc[chaveMes][evento].respondidas++; } return acc; }, {}); return dadosAdesao; }
+
+function formatarRankingGeral(ranking) { let relatorio = '📊 *Ranking Geral de Líderes* 📊\n\n'; const medalhas = ['🥇', '🥈', '🥉']; if (ranking.length === 0) { return 'Nenhuma avaliação foi computada.'; } ranking.forEach((lider, index) => { const posicao = index + 1; const medalha = medalhas[index] || `${posicao}️⃣`; relatorio += `${medalha} *${lider.lider}*\n`; relatorio += `   - Nota Média: *${lider.media}*\n`; relatorio += `   - Total de Votos: *${lider.totalVotos}*\n\n`; }); return relatorio; }
+function formatarResultadoPorEvento(resultado) { let relatorio = '🗓️ *Resultado por Evento* 🗓️\n_(ordenado do mais recente para o mais antigo)_\n\n'; if (resultado.length === 0) { return 'Nenhum evento com avaliações.'; } resultado.forEach(evento => { relatorio += `*${evento.evento}*\n`; relatorio += `   - Nota Média: *${evento.media}*\n`; relatorio += `   - Total de Votos: *${evento.totalVotos}*\n\n`; }); return relatorio; }
+function formatarRelatorioAdesao(adesao) { let relatorio = '📈 *Relatório de Adesão às Pesquisas* 📈\n\n'; const mesesOrdenados = Object.keys(adesao).sort((a, b) => { const [mesA, anoA] = a.split('/'); const [mesB, anoB] = b.split('/'); return new Date(anoB, mesB - 1) - new Date(anoA, mesA - 1); }); if (mesesOrdenados.length === 0) { return 'Nenhuma pesquisa cadastrada.'; } mesesOrdenados.forEach(chaveMes => { const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]; const [mesNum, ano] = chaveMes.split('/'); relatorio += `*${meses[parseInt(mesNum) - 1]} de ${ano}:*\n`; const eventosDoMes = adesao[chaveMes]; for (const nomeEvento in eventosDoMes) { const dados = eventosDoMes[nomeEvento]; const percentual = dados.cadastradas > 0 ? ((dados.respondidas / dados.cadastradas) * 100).toFixed(1) : 0; relatorio += `  - *${nomeEvento}*: ${dados.respondidas} de ${dados.cadastradas} responderam (*${percentual}%*)\n`; } relatorio += '\n'; }); return relatorio; }
+
 async function iniciarFluxoDePesquisa(contato, remoteJid, cpfDoUsuario) { try { const doc = await loadSpreadsheet(); const sheetEventos = doc.sheetsByTitle['Eventos']; if (!sheetEventos) { console.error("ERRO: A aba 'Eventos' não foi encontrada."); return; } const rowsEventos = await sheetEventos.getRows(); const pesquisasPendentes = rowsEventos.filter(row => (row['CPF (xxx.xxx.xxx-xx)'] || '').trim() === cpfDoUsuario && (row.PesquisaEnviada || '').toUpperCase() !== 'TRUE' && (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL'); const footer = '\n\n\n*_Fabinho Eventos_*'; if (pesquisasPendentes.length === 0) { const saudacao = userState[contato]?.stage === 'cadastroFinalizado' ? '' : 'Olá! 👋 '; const msg = `${saudacao}Verificamos aqui e não há pesquisas pendentes para você no momento. Obrigado! 😊${footer}`; await sock.sendMessage(remoteJid, { text: msg }); delete userState[contato]; return; } if (pesquisasPendentes.length === 1) { const pesquisa = pesquisasPendentes[0]; userState[contato] = { stage: 'aguardandoNota', data: pesquisa }; const pergunta = `Olá! 👋 Vimos que você tem uma pesquisa pendente para o evento "${pesquisa.NomeEvento}".\n\nPara nos ajudar a melhorar, poderia avaliar o líder *${pesquisa.NomeLider}* com uma nota de 0 a 10? ✨`; await sock.sendMessage(remoteJid, { text: pergunta }); setConversationTimeout(contato, remoteJid); } else { userState[contato] = { stage: 'aguardandoEscolhaEvento', data: pesquisasPendentes }; let textoEscolha = 'Olá! 👋 Vimos que você tem mais de uma pesquisa pendente. Por favor, escolha qual evento gostaria de avaliar respondendo com o número correspondente:\n\n'; pesquisasPendentes.forEach((pesquisa, index) => { textoEscolha += `${index + 1}️⃣ Evento: *${pesquisa.NomeEvento}* (Líder: ${pesquisa.NomeLider})\n`; }); await sock.sendMessage(remoteJid, { text: textoEscolha }); setConversationTimeout(contato, remoteJid); } } catch (error) { console.error("Erro ao iniciar fluxo de pesquisa:", error); } }
 
 // ==================================================================
@@ -109,22 +89,85 @@ async function connectToWhatsApp() {
             if (isAdmin) {
                 if (!state || !state.stage?.startsWith('admin_')) {
                     userState[contato] = { stage: 'admin_menu' };
-                    await sock.sendMessage(remoteJid, { text: 'Olá, Administrador! 👋 Selecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa' });
+                    const menuAdmin = 'Olá, Administrador! 👋 Selecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa\n*0.* Sair';
+                    await sock.sendMessage(remoteJid, { text: menuAdmin });
                     setConversationTimeout(contato, remoteJid);
                 }
                 else if (state.stage === 'admin_menu') {
                     if (textoMsg === '1') {
-                        delete userState[contato];
-                        await sock.sendMessage(remoteJid, { text: '🔍 Gerando relatório, por favor, aguarde...' });
-                        const ranking = await gerarRelatorioDeLideres();
-                        await sock.sendMessage(remoteJid, { text: formatarRelatorioParaWhatsApp(ranking) });
+                        state.stage = 'admin_resultados_menu';
+                        const menuResultados = '🔍 *Resultados e Relatórios*\n\nSelecione o relatório que deseja visualizar:\n\n*1.* Ranking Geral de Líderes\n*2.* Resultado Geral por Evento\n*3.* Resultado de Líderes (filtrado por Evento)\n*4.* Relatório de Adesão (% de Respostas)\n\n*0.* Voltar ao Menu Principal';
+                        await sock.sendMessage(remoteJid, { text: menuResultados });
+                        setConversationTimeout(contato, remoteJid);
                     } else if (textoMsg === '2') {
                         state.stage = 'admin_aguardando_cpfs';
                         state.data = {};
                         await sock.sendMessage(remoteJid, { text: '📝 Certo! Por favor, envie a lista de CPFs dos participantes. Você pode separar por vírgula, espaço ou ter um por linha.' });
                         setConversationTimeout(contato, remoteJid);
+                    } else if (textoMsg === '0') {
+                        delete userState[contato];
+                        await sock.sendMessage(remoteJid, { text: 'Até logo! 👋' });
                     } else {
-                        await sock.sendMessage(remoteJid, { text: "Opção inválida. Por favor, responda com `1` ou `2`." });
+                        await sock.sendMessage(remoteJid, { text: "Opção inválida. Por favor, responda com `1`, `2` ou `0`." });
+                        setConversationTimeout(contato, remoteJid);
+                    }
+                }
+                else if (state.stage === 'admin_resultados_menu') {
+                    if (textoMsg === '1') {
+                        delete userState[contato];
+                        await sock.sendMessage(remoteJid, { text: 'Gerando Ranking Geral...' });
+                        const ranking = await gerarRankingGeral();
+                        await sock.sendMessage(remoteJid, { text: formatarRankingGeral(ranking) });
+                    } else if (textoMsg === '2') {
+                        delete userState[contato];
+                        await sock.sendMessage(remoteJid, { text: 'Gerando Resultado por Evento...' });
+                        const resultado = await gerarResultadoPorEvento();
+                        await sock.sendMessage(remoteJid, { text: formatarResultadoPorEvento(resultado) });
+                    } else if (textoMsg === '3') {
+                        const allSurveys = await getAllSurveys();
+                        const uniqueEvents = [...new Map(allSurveys.map(item => [item.NomeEvento, item])).values()]
+                            .sort((a,b) => parseDate(b.DataEvento) - parseDate(a.DataEvento));
+                        if (uniqueEvents.length === 0) {
+                            delete userState[contato];
+                            await sock.sendMessage(remoteJid, { text: 'Nenhum evento encontrado para filtrar.' });
+                            return;
+                        }
+                        state.stage = 'admin_lider_por_evento_escolha';
+                        state.data = { events: uniqueEvents };
+                        let eventListText = 'Selecione o evento para ver o ranking dos líderes (do mais novo para o mais antigo):\n\n';
+                        uniqueEvents.forEach((event, index) => { eventListText += `*${index + 1}.* ${event.NomeEvento} (${event.DataEvento})\n`; });
+                        await sock.sendMessage(remoteJid, { text: eventListText });
+                        setConversationTimeout(contato, remoteJid);
+                    } else if (textoMsg === '4') {
+                        delete userState[contato];
+                        await sock.sendMessage(remoteJid, { text: 'Gerando Relatório de Adesão...' });
+                        const adesao = await gerarRelatorioDeAdesao();
+                        await sock.sendMessage(remoteJid, { text: formatarRelatorioAdesao(adesao) });
+                    } else if (textoMsg === '0') {
+                        state.stage = 'admin_menu';
+                        const menuAdmin = 'Olá, Administrador! 👋 Selecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa\n*0.* Sair';
+                        await sock.sendMessage(remoteJid, { text: menuAdmin });
+                        setConversationTimeout(contato, remoteJid);
+                    } else {
+                        await sock.sendMessage(remoteJid, { text: "Opção inválida. Por favor, escolha um número do menu." });
+                        setConversationTimeout(contato, remoteJid);
+                    }
+                }
+                else if (state.stage === 'admin_lider_por_evento_escolha') {
+                    const escolha = parseInt(textoMsg);
+                    const eventos = state.data.events;
+                    if (!isNaN(escolha) && escolha > 0 && escolha <= eventos.length) {
+                        const eventoEscolhido = eventos[escolha - 1].NomeEvento;
+                        delete userState[contato];
+                        await sock.sendMessage(remoteJid, { text: `Gerando ranking para o evento: *${eventoEscolhido}*...` });
+                        const respondidas = await getAnsweredSurveys();
+                        const respondidasDoEvento = respondidas.filter(row => row.NomeEvento === eventoEscolhido);
+                        const dadosLideres = respondidasDoEvento.reduce((acc, row) => { const lider = row.NomeLider; const nota = parseInt(row.Nota); if (!lider || isNaN(nota)) return acc; if (!acc[lider]) { acc[lider] = { lider: lider, notas: [], totalVotos: 0, media: 0 }; } acc[lider].notas.push(nota); acc[lider].totalVotos++; return acc; }, {});
+                        const ranking = Object.values(dadosLideres).map(liderData => { const soma = liderData.notas.reduce((a, b) => a + b, 0); liderData.media = (soma / liderData.totalVotos).toFixed(2); delete liderData.notas; return liderData; });
+                        ranking.sort((a, b) => b.media - a.media);
+                        await sock.sendMessage(remoteJid, { text: formatarRankingGeral(ranking) });
+                    } else {
+                        await sock.sendMessage(remoteJid, { text: `Opção inválida. Por favor, escolha um número de 1 a ${eventos.length}.` });
                         setConversationTimeout(contato, remoteJid);
                     }
                 }
@@ -132,22 +175,10 @@ async function connectToWhatsApp() {
                     const cpfCandidates = textoMsg.split(/[\s,;\n]+/);
                     const cpfsValidos = [];
                     const cpfsInvalidos = [];
-                    for (const candidate of cpfCandidates) {
-                        if (candidate.trim() === '') continue;
-                        const resultadoValidacao = validarEFormatarCPF(candidate);
-                        if (resultadoValidacao.valido) {
-                            cpfsValidos.push(resultadoValidacao.cpfFormatado);
-                        } else {
-                            cpfsInvalidos.push({ original: candidate, motivo: resultadoValidacao.motivo });
-                        }
-                    }
+                    for (const candidate of cpfCandidates) { if (candidate.trim() === '') continue; const resultadoValidacao = validarEFormatarCPF(candidate); if (resultadoValidacao.valido) { cpfsValidos.push(resultadoValidacao.cpfFormatado); } else { cpfsInvalidos.push({ original: candidate, motivo: resultadoValidacao.motivo }); } }
                     let responseText = '';
                     if (cpfsValidos.length > 0) { responseText += `✅ ${cpfsValidos.length} CPFs válidos foram processados e formatados.\n\n`; }
-                    if (cpfsInvalidos.length > 0) {
-                        responseText += `⚠️ Os seguintes ${cpfsInvalidos.length} itens foram ignorados:\n`;
-                        cpfsInvalidos.forEach(invalido => { responseText += `- "${invalido.original}" (Motivo: ${invalido.motivo})\n`; });
-                        responseText += '\n';
-                    }
+                    if (cpfsInvalidos.length > 0) { responseText += `⚠️ Os seguintes ${cpfsInvalidos.length} itens foram ignorados:\n`; cpfsInvalidos.forEach(invalido => { responseText += `- "${invalido.original}" (Motivo: ${invalido.motivo})\n`; }); responseText += '\n'; }
                     if (cpfsValidos.length > 0) {
                         state.data.cpfs = cpfsValidos;
                         state.stage = 'admin_aguardando_nome_evento';
@@ -184,11 +215,7 @@ async function connectToWhatsApp() {
             } else if (state) {
                 if (state.stage === 'aguardandoCPF') {
                     const resultadoValidacao = validarEFormatarCPF(textoMsg);
-                    if (!resultadoValidacao.valido) {
-                        await sock.sendMessage(remoteJid, { text: `❌ CPF inválido. ${resultadoValidacao.motivo} Por favor, tente novamente.` });
-                        setConversationTimeout(contato, remoteJid);
-                        return;
-                    }
+                    if (!resultadoValidacao.valido) { await sock.sendMessage(remoteJid, { text: `❌ CPF inválido. ${resultadoValidacao.motivo} Por favor, tente novamente.` }); setConversationTimeout(contato, remoteJid); return; }
                     state.data.cpf = resultadoValidacao.cpfFormatado;
                     state.stage = 'aguardandoConfirmacaoCPF';
                     await sock.sendMessage(remoteJid, { text: `📄 O CPF digitado foi: *${resultadoValidacao.cpfFormatado}*. Está correto? (Responda 'Sim' ou 'Não')` });
