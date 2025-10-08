@@ -363,8 +363,9 @@ async function connectToWhatsApp() {
                         await sock.sendMessage(remoteJid, { text: '👤 Digite o CPF do usuário que deseja alterar o perfil.' });
                         setConversationTimeout(contato, remoteJid);
                     } else if (textoMsg === '4') {
-                        state.stage = 'admin_blacklist_pede_cpf';
-                        await sock.sendMessage(remoteJid, { text: '⚫ Digite o CPF do usuário que deseja adicionar à blacklist, ou digite "cancelar".' });
+                        state.stage = 'admin_blacklist_menu'; // MUDA O ESTADO
+                        const menuBlacklist = '⚫ *Gerenciamento da Blacklist*\n\nSelecione uma opção:\n\n*1.* Adicionar CPF\n*2.* Consultar CPF\n*3.* Remover CPF\n\n*0.* Voltar ao Menu Principal';
+                        await sock.sendMessage(remoteJid, { text: menuBlacklist });
                         setConversationTimeout(contato, remoteJid);
                     } else if (textoMsg === '0') {
                         delete userState[contato];
@@ -382,12 +383,13 @@ async function connectToWhatsApp() {
                         const ranking = await gerarRankingGeral();
                         await sock.sendMessage(remoteJid, { text: formatarRankingGeral(ranking) });
                         relatorioGerado = true;
-                    } else if (textoMsg === '2') {
-                        await sock.sendMessage(remoteJid, { text: 'Gerando Resultado por Evento...' });
-                        const resultado = await gerarResultadoPorEvento();
-                        await sock.sendMessage(remoteJid, { text: formatarResultadoPorEvento(resultado) });
-                        relatorioGerado = true;
-                    } else if (textoMsg === '3') {
+                    } // Dentro do `else if (state.stage === 'lider_menu')`
+                        else if (textoMsg === '2') {
+                            state.stage = 'admin_blacklist_menu'; // MUDA O ESTADO (reutiliza o mesmo estado do admin)
+                            const menuBlacklist = '⚫ *Gerenciamento da Blacklist*\n\nSelecione uma opção:\n\n*1.* Adicionar CPF\n*2.* Consultar CPF\n*3.* Remover CPF\n\n*0.* Voltar ao Menu Principal';
+                            await sock.sendMessage(remoteJid, { text: menuBlacklist });
+                            setConversationTimeout(contato, remoteJid);
+                        } else if (textoMsg === '3') {
                         const allSurveys = await getAllSurveys();
                         const uniqueEvents = [...new Map(allSurveys.map(item => [item.NomeEvento, item])).values()].sort((a,b) => parseDate(b.DataEvento) - parseDate(a.DataEvento));
                         if (uniqueEvents.length === 0) { delete userState[contato]; await sock.sendMessage(remoteJid, { text: 'Nenhum evento encontrado para filtrar.' }); return; }
@@ -519,7 +521,7 @@ async function connectToWhatsApp() {
                         setConversationTimeout(contato, remoteJid);
                     }
                 }
-                else if (state.stage === 'admin_blacklist_pede_cpf') {
+                else if (state.stage === 'admin_blacklist_add_pede_motivo') {
                     if (resposta === 'cancelar') { delete userState[contato]; await sock.sendMessage(remoteJid, { text: 'Ação cancelada.' }); return; }
                     const resultadoValidacao = validarEFormatarCPF(textoMsg);
                     if (!resultadoValidacao.valido) { await sock.sendMessage(remoteJid, { text: `❌ CPF inválido. ${resultadoValidacao.motivo} Tente novamente ou digite 'cancelar'.` }); setConversationTimeout(contato, remoteJid); return; }
@@ -533,7 +535,7 @@ async function connectToWhatsApp() {
                     await sock.sendMessage(remoteJid, { text: `Encontrei *${state.data.nome}*. Qual o motivo para adicioná-lo(a) à blacklist? (Digite o motivo ou 'cancelar')` });
                     setConversationTimeout(contato, remoteJid);
                 }
-                else if (state.stage === 'admin_blacklist_pede_motivo') {
+                else if (state.stage === 'admin_blacklist_add_confirma') {
                     if (resposta === 'cancelar') { delete userState[contato]; await sock.sendMessage(remoteJid, { text: 'Ação cancelada.' }); return; }
                     state.data.motivo = textoMsg;
                     state.stage = 'admin_blacklist_confirma';
@@ -541,7 +543,7 @@ async function connectToWhatsApp() {
                     await sock.sendMessage(remoteJid, { text: confirmMsg });
                     setConversationTimeout(contato, remoteJid);
                 }
-                else if (state.stage === 'admin_blacklist_confirma') {
+                else if (state.stage === 'admin_blacklist_add_confirma') {
                     if (['sim', 's'].includes(resposta)) {
                         const doc = await loadSpreadsheet();
                         const sheetBlacklist = doc.sheetsByTitle['Blacklist'];
@@ -553,6 +555,162 @@ async function connectToWhatsApp() {
                         await sock.sendMessage(remoteJid, { text: 'Ação cancelada.' });
                     }
                 }
+                // ADICIONE ESTE BLOCO DE CÓDIGO NO SEU INDEX.JS
+
+                        else if (state.stage === 'admin_blacklist_menu') {
+                            if (textoMsg === '1') {
+                                state.stage = 'admin_blacklist_add_pede_cpf';
+                                await sock.sendMessage(remoteJid, { text: '⚫ Digite o CPF que deseja *ADICIONAR* à blacklist, ou digite "cancelar".' });
+                                setConversationTimeout(contato, remoteJid);
+                            } else if (textoMsg === '2') {
+                                state.stage = 'admin_blacklist_consult_pede_cpf';
+                                await sock.sendMessage(remoteJid, { text: '⚫ Digite o CPF que deseja *CONSULTAR* na blacklist, ou digite "cancelar".' });
+                                setConversationTimeout(contato, remoteJid);
+                            } else if (textoMsg === '3') {
+                                state.stage = 'admin_blacklist_remove_pede_cpf';
+                                await sock.sendMessage(remoteJid, { text: '⚫ Digite o CPF que deseja *REMOVER* da blacklist, ou digite "cancelar".' });
+                                setConversationTimeout(contato, remoteJid);
+                            } else if (textoMsg === '0') {
+                                state.stage = (perfil === 'ADMIN_GERAL') ? 'admin_menu' : 'lider_menu';
+                                const menuAnterior = (perfil === 'ADMIN_GERAL') ? menuAdmin : menuLider;
+                                await sock.sendMessage(remoteJid, { text: menuAnterior });
+                                setConversationTimeout(contato, remoteJid);
+                            } else {
+                                await sock.sendMessage(remoteJid, { text: "Opção inválida. Por favor, escolha uma das opções do menu." });
+                                setConversationTimeout(contato, remoteJid);
+                            }
+                        }
+                        else if (state.stage === 'admin_blacklist_consult_pede_cpf') {
+                            if (resposta === 'cancelar') { delete userState[contato]; await sock.sendMessage(remoteJid, { text: 'Ação cancelada.' }); return; }
+                            
+                            const resultadoValidacao = validarEFormatarCPF(textoMsg);
+                            if (!resultadoValidacao.valido) {
+                                await sock.sendMessage(remoteJid, { text: `❌ CPF inválido. ${resultadoValidacao.motivo} Tente novamente ou digite 'cancelar'.` });
+                                setConversationTimeout(contato, remoteJid);
+                                return;
+                            }
+                            
+                            const doc = await loadSpreadsheet();
+                            const sheetBlacklist = doc.sheetsByTitle['Blacklist'];
+                            const rows = await sheetBlacklist.getRows();
+                            const usuarioBlacklist = rows.find(row => row.CPF === resultadoValidacao.cpfFormatado);
+
+                            if (usuarioBlacklist) {
+                                let info = `*CPF Encontrado na Blacklist:*\n\n`;
+                                info += `*Nome:* ${usuarioBlacklist['Nome Completo']}\n`;
+                                info += `*CPF:* ${usuarioBlacklist.CPF}\n`;
+                                info += `*Data de Inclusão:* ${usuarioBlacklist['Data de Inclusão']}\n`;
+                                info += `*Incluído por:* ${usuarioBlacklist['Quem Incluiu']}\n`;
+                                info += `*Motivo:* ${usuarioBlacklist.Motivo}`;
+                                await sock.sendMessage(remoteJid, { text: info });
+                            } else {
+                                await sock.sendMessage(remoteJid, { text: `✅ O CPF ${resultadoValidacao.cpfFormatado} *não* foi encontrado na blacklist.` });
+                            }
+                            delete userState[contato]; // Fim do fluxo de consulta
+                        }
+                        else if (state.stage === 'admin_blacklist_remove_pede_cpf') {
+                            if (resposta === 'cancelar') { delete userState[contato]; await sock.sendMessage(remoteJid, { text: 'Ação cancelada.' }); return; }
+
+                            const resultadoValidacao = validarEFormatarCPF(textoMsg);
+                            if (!resultadoValidacao.valido) {
+                                await sock.sendMessage(remoteJid, { text: `❌ CPF inválido. ${resultadoValidacao.motivo} Tente novamente ou digite 'cancelar'.` });
+                                setConversationTimeout(contato, remoteJid);
+                                return;
+                            }
+
+                            const doc = await loadSpreadsheet();
+                            const sheetBlacklist = doc.sheetsByTitle['Blacklist'];
+                            const rows = await sheetBlacklist.getRows();
+                            const usuarioParaRemover = rows.find(row => row.CPF === resultadoValidacao.cpfFormatado);
+
+                            if (!usuarioParaRemover) {
+                                await sock.sendMessage(remoteJid, { text: `❌ O CPF ${resultadoValidacao.cpfFormatado} não foi encontrado na blacklist. Tente novamente ou digite "cancelar".` });
+                                setConversationTimeout(contato, remoteJid);
+                                return;
+                            }
+
+                            state.data = { usuario: usuarioParaRemover };
+                            state.stage = 'admin_blacklist_remove_confirma';
+                            const confirmMsg = `Você tem certeza que deseja remover o usuário abaixo da blacklist?\n\n*Nome:* ${usuarioParaRemover['Nome Completo']}\n*CPF:* ${usuarioParaRemover.CPF}\n\nResponda 'Sim' para confirmar ou 'Não' para cancelar.`;
+                            await sock.sendMessage(remoteJid, { text: confirmMsg });
+                            setConversationTimeout(contato, remoteJid);
+                        }
+                        else if (state.stage === 'admin_blacklist_remove_confirma') {
+                            if (['sim', 's'].includes(resposta)) {
+                                await state.data.usuario.delete(); // Apaga a linha da planilha
+                                delete userState[contato];
+                                await sock.sendMessage(remoteJid, { text: `✅ Usuário removido da blacklist com sucesso!` });
+                            } else {
+                                delete userState[contato];
+                                await sock.sendMessage(remoteJid, { text: 'Ação cancelada.' });
+                            }
+                        }
+                // ##### ADICIONE ESTE NOVO BLOCO ABAIXO #####
+                else if (state.stage === 'lider_menu') {
+                    if (textoMsg === '1') {
+                        state.stage = 'lider_cad_evento_nome'; 
+                        state.data = {};
+                        await sock.sendMessage(remoteJid, { text: '📝 Certo! Qual o *Nome do Novo Evento*?' });
+                        setConversationTimeout(contato, remoteJid);
+                    } else if (textoMsg === '2') {
+                        state.stage = 'admin_blacklist_pede_cpf'; // Reutiliza o fluxo de blacklist do admin
+                        await sock.sendMessage(remoteJid, { text: '⚫ Digite o CPF do usuário que deseja adicionar à blacklist, ou digite "cancelar".' });
+                        setConversationTimeout(contato, remoteJid);
+                    } else if (textoMsg === '0') {
+                        delete userState[contato];
+                        await sock.sendMessage(remoteJid, { text: 'Até logo! 👋' });
+                    } else {
+                        await sock.sendMessage(remoteJid, { text: "Opção inválida. Por favor, responda com `1`, `2` ou `0`." });
+                        setConversationTimeout(contato, remoteJid);
+                    }
+                }
+                // ##### ADICIONE ESTES NOVOS BLOCOS ABAIXO #####
+                else if (state.stage === 'lider_cad_evento_nome') {
+                    state.data.nomeEvento = textoMsg;
+                    state.stage = 'lider_cad_evento_data';
+                    await sock.sendMessage(remoteJid, { text: `🗓️ Evento "${textoMsg}" registrado. Agora, qual a *Data do Evento*? (ex: DD/MM/AAAA)` });
+                    setConversationTimeout(contato, remoteJid);
+                }
+                else if (state.stage === 'lider_cad_evento_data') {
+                    state.data.dataEvento = textoMsg;
+                    state.stage = 'lider_cad_evento_funcoes';
+                    let funcoesTexto = '✅ Data registrada. Agora, selecione as *funções disponíveis* para este evento, enviando os números separados por vírgula (ex: 1, 4, 6).\n\n';
+                    FUNCOES_EVENTO.forEach((funcao, index) => {
+                        funcoesTexto += `*${index + 1}.* ${funcao}\n`;
+                    });
+                    await sock.sendMessage(remoteJid, { text: funcoesTexto });
+                    setConversationTimeout(contato, remoteJid);
+                }
+                else if (state.stage === 'lider_cad_evento_funcoes') {
+                    const escolhas = textoMsg.split(',').map(num => parseInt(num.trim()));
+                    const funcoesSelecionadas = [];
+                    for(const escolha of escolhas) {
+                        if (!isNaN(escolha) && escolha > 0 && escolha <= FUNCOES_EVENTO.length) {
+                            funcoesSelecionadas.push(FUNCOES_EVENTO[escolha - 1]);
+                        }
+                    }
+                    if (funcoesSelecionadas.length === 0) {
+                        await sock.sendMessage(remoteJid, { text: 'Nenhuma função válida selecionada. Por favor, envie os números separados por vírgula.' });
+                        setConversationTimeout(contato, remoteJid);
+                        return;
+                    }
+                    
+                    state.data.funcoes = funcoesSelecionadas.join(', ');
+                    await sock.sendMessage(remoteJid, { text: `Salvando evento... ⏳` });
+
+                    const doc = await loadSpreadsheet();
+                    const sheetEventosCadastrados = doc.sheetsByTitle['Eventos_Cadastrados'];
+                    await sheetEventosCadastrados.addRow({
+                        'Nome do Evento': state.data.nomeEvento,
+                        'Data do Evento': state.data.dataEvento,
+                        'Funções Disponíveis': state.data.funcoes,
+                    });
+
+                    delete userState[contato];
+                    await sock.sendMessage(remoteJid, { text: `🎉 *Evento "${state.data.nomeEvento}" cadastrado com sucesso!* Coordenadores já podem credenciar pessoas para ele.${footer}` });
+                }
+                // ##### FIM DOS NOVOS BLOCOS #####
+
                 // FLUXOS DE USUÁRIO (CADASTRO E PESQUISA)
                 else if (state.stage === 'aguardandoCPF') {
                     const resultadoValidacao = validarEFormatarCPF(textoMsg);
