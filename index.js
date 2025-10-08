@@ -4,8 +4,7 @@
 // ==================================================================
 
 // 1. IMPORTAÇÕES E CONFIGURAÇÃO
-const { default: makeWASocket, DisconnectReason, Browsers, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, proto } = require('@whiskeysockets/baileys');
-const { Boom } = require('@hapi/boom');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');const { Boom } = require('@hapi/boom');
 const express = require('express');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const pino = require('pino');
