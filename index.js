@@ -480,64 +480,184 @@ async function connectToWhatsApp() {
 
 
                 // ##### CÓDIGO PARA ADICIONAR INÍCIO #####
-else if (state.stage === 'admin_resultados_menu') {
-    let relatorio;
-    // Remove o timeout, pois a ação será concluída agora ou o usuário voltará ao menu
-    clearConversationTimeout(contato);
+                else if (state.stage === 'admin_resultados_menu') {
+                    let relatorio;
+                    // Remove o timeout, pois a ação será concluída agora ou o usuário voltará ao menu
+                    clearConversationTimeout(contato);
 
-    switch (textoMsg) {
-        case '1':
-            await sock.sendMessage(remoteJid, { text: 'Gerando Ranking Geral de Líderes... 📊' });
-            const ranking = await gerarRankingGeral();
-            relatorio = formatarRankingGeral(ranking);
-            await sock.sendMessage(remoteJid, { text: relatorio });
-            delete userState[contato]; // Encerra a conversa após o relatório
-            break;
-        case '2':
-            await sock.sendMessage(remoteJid, { text: 'Gerando Resultado por Evento... 🗓️' });
-            const resultado = await gerarResultadoPorEvento();
-            relatorio = formatarResultadoPorEvento(resultado);
-            await sock.sendMessage(remoteJid, { text: relatorio });
-            delete userState[contato]; // Encerra a conversa após o relatório
-            break;
-        case '3':
-            await sock.sendMessage(remoteJid, { text: 'Gerando Relatório de Adesão... 📈' });
-            const adesao = await gerarRelatorioDeAdesao();
-            relatorio = formatarRelatorioAdesao(adesao);
-            await sock.sendMessage(remoteJid, { text: relatorio });
-            delete userState[contato]; // Encerra a conversa após o relatório
-            break;
-        case '0':
-            // Volta para o menu anterior
-            state.stage = 'admin_menu';
-            await sock.sendMessage(remoteJid, { text: menuAdmin });
-            setConversationTimeout(contato, remoteJid);
-            break;
-        default:
-            await sock.sendMessage(remoteJid, { text: 'Opção inválida. Por favor, escolha uma das opções do menu.' });
-            setConversationTimeout(contato, remoteJid); // Mantém o usuário neste menu para tentar de novo
-            break;
-    }
-}
-// ##### CÓDIGO PARA ADICIONAR FIM #####
+                    switch (textoMsg) {
+                        case '1':
+                            await sock.sendMessage(remoteJid, { text: 'Gerando Ranking Geral de Líderes... 📊' });
+                            const ranking = await gerarRankingGeral();
+                            relatorio = formatarRankingGeral(ranking);
+                            await sock.sendMessage(remoteJid, { text: relatorio });
+                            delete userState[contato]; // Encerra a conversa após o relatório
+                            break;
+                        case '2':
+                            await sock.sendMessage(remoteJid, { text: 'Gerando Resultado por Evento... 🗓️' });
+                            const resultado = await gerarResultadoPorEvento();
+                            relatorio = formatarResultadoPorEvento(resultado);
+                            await sock.sendMessage(remoteJid, { text: relatorio });
+                            delete userState[contato]; // Encerra a conversa após o relatório
+                            break;
+                        case '3':
+                            await sock.sendMessage(remoteJid, { text: 'Gerando Relatório de Adesão... 📈' });
+                            const adesao = await gerarRelatorioDeAdesao();
+                            relatorio = formatarRelatorioAdesao(adesao);
+                            await sock.sendMessage(remoteJid, { text: relatorio });
+                            delete userState[contato]; // Encerra a conversa após o relatório
+                            break;
+                        case '0':
+                            // Volta para o menu anterior
+                            state.stage = 'admin_menu';
+                            await sock.sendMessage(remoteJid, { text: menuAdmin });
+                            setConversationTimeout(contato, remoteJid);
+                            break;
+                        default:
+                            await sock.sendMessage(remoteJid, { text: 'Opção inválida. Por favor, escolha uma das opções do menu.' });
+                            setConversationTimeout(contato, remoteJid); // Mantém o usuário neste menu para tentar de novo
+                            break;
+                    }
+                }
 
-            } else {
-                // Início de uma nova conversa
-                if (perfil === 'ADMIN_GERAL') {
-                    userState[contato] = { stage: 'admin_menu' };
-                    await sock.sendMessage(remoteJid, { text: menuAdmin });
+                // ##### CÓDIGO PARA ADICIONAR (PARTE 1) INÍCIO #####
+                else if (state.stage === 'admin_cad_pesquisa_cpfs') {
+                    const cpfs = textoMsg.split(/[\s,]+/).filter(cpf => cpf.trim() !== '');
+                    if (cpfs.length === 0) {
+                        await sock.sendMessage(remoteJid, { text: 'Nenhum CPF foi enviado. Por favor, envie a lista de CPFs.' });
+                        setConversationTimeout(contato, remoteJid);
+                        return;
+                    }
+                    state.data = { cpfs };
+                    state.stage = 'admin_cad_pesquisa_nome_evento';
+                    await sock.sendMessage(remoteJid, { text: `Ok, recebi ${cpfs.length} CPFs. Qual é o nome do evento?` });
                     setConversationTimeout(contato, remoteJid);
-                } else { // Trata FREELANCER e qualquer outro perfil como padrão
-                    const usuarioExistente = await obterUsuario(contato);
-                    if (usuarioExistente) {
-                        await iniciarFluxoDePesquisa(contato, remoteJid, usuarioExistente);
+                }
+                else if (state.stage === 'admin_cad_pesquisa_nome_evento') {
+                    state.data.nomeEvento = textoMsg;
+                    state.stage = 'admin_cad_pesquisa_nome_lider';
+                    await sock.sendMessage(remoteJid, { text: 'Qual o nome do líder que será avaliado?' });
+                    setConversationTimeout(contato, remoteJid);
+                }
+                else if (state.stage === 'admin_cad_pesquisa_nome_lider') {
+                    state.data.nomeLider = textoMsg;
+                    state.stage = 'admin_cad_pesquisa_data';
+                    await sock.sendMessage(remoteJid, { text: 'Qual a data do evento? (Formato DD/MM/AAAA)' });
+                    setConversationTimeout(contato, remoteJid);
+                }
+                else if (state.stage === 'admin_cad_pesquisa_data') {
+                    state.data.dataEvento = textoMsg;
+                    await sock.sendMessage(remoteJid, { text: 'Processando... Por favor, aguarde. Isso pode levar um momento.' });
+
+                    const doc = await loadSpreadsheet();
+                    const sheetEventos = doc.sheetsByTitle['Eventos'];
+                    const sheetCadastros = doc.sheetsByTitle['Cadastros'];
+                    const rowsCadastros = await sheetCadastros.getRows();
+
+                    const novasLinhas = [];
+                    for (const cpfInput of state.data.cpfs) {
+                        const resultadoValidacao = validarEFormatarCPF(cpfInput);
+                        if (resultadoValidacao.valido) {
+                            const cpfFormatado = resultadoValidacao.cpfFormatado;
+                            const usuarioCadastro = rowsCadastros.find(row => row['CPF (xxx.xxx.xxx-xx)'] === cpfFormatado);
+
+                            novasLinhas.push({
+                                'CPF (xxx.xxx.xxx-xx)': cpfFormatado,
+                                'Nome Freelancer': usuarioCadastro ? usuarioCadastro.NomeCompleto : 'CPF não cadastrado',
+                                'NomeEvento': state.data.nomeEvento,
+                                'NomeLider': state.data.nomeLider,
+                                'DataEvento': state.data.dataEvento
+                            });
+                        }
+                    }
+
+                    if (novasLinhas.length > 0) {
+                        await sheetEventos.addRows(novasLinhas);
+                        await sock.sendMessage(remoteJid, { text: `✅ Pesquisa para o evento "${state.data.nomeEvento}" cadastrada com sucesso para ${novasLinhas.length} CPFs!` });
                     } else {
-                        userState[contato] = { stage: 'aguardandoCPF', data: {} };
-                        const msgBoasVindas = '*FABINHO EVENTOS*\n\nOlá! 👋 Para acessar nosso sistema, precisamos fazer um rápido cadastro.\n\nPor favor, digite seu *CPF* (apenas os números).';
-                        await sock.sendMessage(remoteJid, { text: msgBoasVindas });
+                        await sock.sendMessage(remoteJid, { text: 'Nenhum CPF válido foi processado.' });
+                    }
+
+                    delete userState[contato];
+                    clearConversationTimeout(contato);
+                }
+                // ##### CÓDIGO PARA ADICIONAR (PARTE 1) FIM #####
+
+
+                // ##### CÓDIGO PARA ADICIONAR (PARTE 2) INÍCIO #####
+                else if (state.stage === 'admin_alt_perfil_pede_cpf') {
+                    const resultadoValidacao = validarEFormatarCPF(textoMsg);
+                    if (!resultadoValidacao.valido) {
+                        await sock.sendMessage(remoteJid, { text: `CPF inválido. ${resultadoValidacao.motivo}. Tente novamente.` });
+                        setConversationTimeout(contato, remoteJid);
+                        return;
+                    }
+                    const doc = await loadSpreadsheet();
+                    const sheetCadastros = doc.sheetsByTitle['Cadastros'];
+                    const rows = await sheetCadastros.getRows();
+                    const usuarioParaAlterar = rows.find(row => row['CPF (xxx.xxx.xxx-xx)'] === resultadoValidacao.cpfFormatado);
+
+                    if (!usuarioParaAlterar) {
+                        await sock.sendMessage(remoteJid, { text: 'CPF não encontrado na base de dados. Tente novamente.' });
+                        setConversationTimeout(contato, remoteJid);
+                        return;
+                    }
+                    state.data = { usuario: usuarioParaAlterar };
+                    state.stage = 'admin_alt_perfil_confirma';
+                    await sock.sendMessage(remoteJid, { text: `Usuário encontrado: *${usuarioParaAlterar.NomeCompleto}*. Perfil atual: *${usuarioParaAlterar.Perfil}*. Deseja alterar? (Sim/Não)` });
+                    setConversationTimeout(contato, remoteJid);
+                }
+                else if (state.stage === 'admin_alt_perfil_confirma') {
+                    if (textoMsg.toLowerCase() === 'sim') {
+                        state.stage = 'admin_alt_perfil_pede_perfil';
+                        let textoPerfis = 'Para qual perfil você deseja alterar?\n\n';
+                        PERFIS_DISPONIVEIS.forEach((perfil, index) => {
+                            textoPerfis += `*${index + 1}.* ${perfil}\n`;
+                        });
+                        await sock.sendMessage(remoteJid, { text: textoPerfis });
+                        setConversationTimeout(contato, remoteJid);
+                    } else {
+                        delete userState[contato];
+                        clearConversationTimeout(contato);
+                        await sock.sendMessage(remoteJid, { text: 'Operação cancelada.' });
+                    }
+                }
+                else if (state.stage === 'admin_alt_perfil_pede_perfil') {
+                    const escolha = parseInt(textoMsg);
+                    if (!isNaN(escolha) && escolha > 0 && escolha <= PERFIS_DISPONIVEIS.length) {
+                        const novoPerfil = PERFIS_DISPONIVEIS[escolha - 1];
+                        state.data.usuario.Perfil = novoPerfil;
+                        await state.data.usuario.save();
+                        
+                        delete userState[contato];
+                        clearConversationTimeout(contato);
+                        await sock.sendMessage(remoteJid, { text: `✅ Perfil de *${state.data.usuario.NomeCompleto}* alterado com sucesso para *${novoPerfil}*!` });
+                    } else {
+                        await sock.sendMessage(remoteJid, { text: 'Opção inválida. Por favor, escolha um dos números da lista.' });
                         setConversationTimeout(contato, remoteJid);
                     }
                 }
+                // ##### CÓDIGO PARA ADICIONAR (PARTE 2) FIM #####
+
+                // ##### CÓDIGO PARA ADICIONAR FIM #####
+
+                    } else {
+                        // Início de uma nova conversa
+                        if (perfil === 'ADMIN_GERAL') {
+                            userState[contato] = { stage: 'admin_menu' };
+                            await sock.sendMessage(remoteJid, { text: menuAdmin });
+                            setConversationTimeout(contato, remoteJid);
+                        } else { // Trata FREELANCER e qualquer outro perfil como padrão
+                            const usuarioExistente = await obterUsuario(contato);
+                            if (usuarioExistente) {
+                                await iniciarFluxoDePesquisa(contato, remoteJid, usuarioExistente);
+                            } else {
+                                userState[contato] = { stage: 'aguardandoCPF', data: {} };
+                                const msgBoasVindas = '*FABINHO EVENTOS*\n\nOlá! 👋 Para acessar nosso sistema, precisamos fazer um rápido cadastro.\n\nPor favor, digite seu *CPF* (apenas os números).';
+                                await sock.sendMessage(remoteJid, { text: msgBoasVindas });
+                                setConversationTimeout(contato, remoteJid);
+                            }
+                        }
             }
         } catch (error) {
             console.error(`[ERRO GERAL] Falha ao processar mensagem de ${contato}:`, error);
