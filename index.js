@@ -477,10 +477,49 @@ async function connectToWhatsApp() {
                             break;
                     }
                 }
-                else if (state.stage === 'admin_resultados_menu') {
-                    // Lógica para o menu de resultados (esta parte estava faltando no Bloco 3 anterior)
-                    // ... (e assim por diante para todos os outros estados)
-                }
+
+
+                // ##### CÓDIGO PARA ADICIONAR INÍCIO #####
+else if (state.stage === 'admin_resultados_menu') {
+    let relatorio;
+    // Remove o timeout, pois a ação será concluída agora ou o usuário voltará ao menu
+    clearConversationTimeout(contato);
+
+    switch (textoMsg) {
+        case '1':
+            await sock.sendMessage(remoteJid, { text: 'Gerando Ranking Geral de Líderes... 📊' });
+            const ranking = await gerarRankingGeral();
+            relatorio = formatarRankingGeral(ranking);
+            await sock.sendMessage(remoteJid, { text: relatorio });
+            delete userState[contato]; // Encerra a conversa após o relatório
+            break;
+        case '2':
+            await sock.sendMessage(remoteJid, { text: 'Gerando Resultado por Evento... 🗓️' });
+            const resultado = await gerarResultadoPorEvento();
+            relatorio = formatarResultadoPorEvento(resultado);
+            await sock.sendMessage(remoteJid, { text: relatorio });
+            delete userState[contato]; // Encerra a conversa após o relatório
+            break;
+        case '3':
+            await sock.sendMessage(remoteJid, { text: 'Gerando Relatório de Adesão... 📈' });
+            const adesao = await gerarRelatorioDeAdesao();
+            relatorio = formatarRelatorioAdesao(adesao);
+            await sock.sendMessage(remoteJid, { text: relatorio });
+            delete userState[contato]; // Encerra a conversa após o relatório
+            break;
+        case '0':
+            // Volta para o menu anterior
+            state.stage = 'admin_menu';
+            await sock.sendMessage(remoteJid, { text: menuAdmin });
+            setConversationTimeout(contato, remoteJid);
+            break;
+        default:
+            await sock.sendMessage(remoteJid, { text: 'Opção inválida. Por favor, escolha uma das opções do menu.' });
+            setConversationTimeout(contato, remoteJid); // Mantém o usuário neste menu para tentar de novo
+            break;
+    }
+}
+// ##### CÓDIGO PARA ADICIONAR FIM #####
 
             } else {
                 // Início de uma nova conversa
