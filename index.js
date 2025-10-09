@@ -254,21 +254,27 @@ async function iniciarFluxoDePesquisa(contato, remoteJid, usuario) {
         const rowsEventos = await sheetEventos.getRows();
         const pesquisasPendentes = rowsEventos.filter(row => (row['CPF (xxx.xxx.xxx-xx)'] || '').trim() === cpfDoUsuario && (row.PesquisaEnviada || '').toUpperCase() !== 'TRUE' && (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL');
         const footer = '\n\n\n*_Fabinho Eventos_*';
-        if (pesquisasPendentes.length === 0) {
+
+        const totalPendentes = pesquisasPendentes.length; // Guarda o total
+
+        if (totalPendentes === 0) {
             const msg = `Olá, ${usuario.NomeCompleto.split(' ')[0]}! 👋\n\nVerificamos aqui e não há pesquisas de satisfação pendentes para você no momento.\n\nPara ficar por dentro das novidades e futuros eventos, siga nosso Instagram!
 ➡️ https://www.instagram.com/eventos.fabinho/ \n\n${footer}`;
             await sock.sendMessage(remoteJid, { text: msg });
             delete userState[contato];
             return;
         }
-        if (pesquisasPendentes.length === 1) {
+
+        if (totalPendentes === 1) {
             const pesquisa = pesquisasPendentes[0];
-            userState[contato] = { stage: 'aguardandoNota', data: pesquisa };
+            // ##### ALTERAÇÃO AQUI: Passando o total pendente #####
+            userState[contato] = { stage: 'aguardandoNota', data: { pesquisa: pesquisa, totalPendentesInicial: totalPendentes } };
             const pergunta = `Olá! 👋 Vimos que você tem uma pesquisa pendente para o evento "${pesquisa.NomeEvento}".\n\nPara nos ajudar a melhorar, poderia avaliar o líder *${pesquisa.NomeLider}* com uma nota de 0 a 10? ✨`;
             await sock.sendMessage(remoteJid, { text: pergunta });
             setConversationTimeout(contato, remoteJid);
         } else {
-            userState[contato] = { stage: 'aguardandoEscolhaEvento', data: pesquisasPendentes };
+            // ##### ALTERAÇÃO AQUI: Passando o total pendente #####
+            userState[contato] = { stage: 'aguardandoEscolhaEvento', data: { pesquisas: pesquisasPendentes, totalPendentesInicial: totalPendentes } };
             let textoEscolha = 'Olá! 👋 Vimos que você tem mais de uma pesquisa pendente. Por favor, escolha qual evento gostaria de avaliar respondendo com o número correspondente:\n\n';
             pesquisasPendentes.forEach((pesquisa, index) => { textoEscolha += `${index + 1}️⃣ Evento: *${pesquisa.NomeEvento}* (Líder: ${pesquisa.NomeLider})\n`; });
             await sock.sendMessage(remoteJid, { text: textoEscolha });
@@ -278,6 +284,8 @@ async function iniciarFluxoDePesquisa(contato, remoteJid, usuario) {
         console.error("Erro ao iniciar fluxo de pesquisa:", error);
     }
 }
+
+
 
 // ==================================================================
 // BLOCO 3 de 4: Conexão e Lógica Principal do Bot
@@ -384,6 +392,8 @@ async function connectToWhatsApp() {
                     const escolha = parseInt(textoMsg);
                     if (!isNaN(escolha) && escolha > 0 && escolha <= state.data.length) {
                         const pesquisa = state.data[escolha - 1];
+                        const totalPendentes = state.data.totalPendentesInicial; // Pega o total que já guardamos
+
                         userState[contato] = { stage: 'aguardandoNota', data: pesquisa };
                         const pergunta = `Ok! Para o evento "${pesquisa.NomeEvento}", qual nota de 0 a 10 você daria para o líder *${pesquisa.NomeLider}*?`;
                         await sock.sendMessage(remoteJid, { text: pergunta });
@@ -393,39 +403,41 @@ async function connectToWhatsApp() {
                         setConversationTimeout(contato, remoteJid);
                     }
                 }
-                else if (state.stage === 'aguardandoNota') {
-                    const nota = parseInt(textoMsg);
-                    if (isNaN(nota) || nota < 0 || nota > 10) {
-                        await sock.sendMessage(remoteJid, { text: 'Nota inválida. Por favor, envie um número de 0 a 10.' });
-                        setConversationTimeout(contato, remoteJid);
-                        return;
+                // Localize este bloco no BLOCO 3 e substitua-o inteiramente
+
+                    else if (state.stage === 'aguardandoNota') {
+                        const nota = parseInt(textoMsg);
+                        if (isNaN(nota) || nota < 0 || nota > 10) {
+                            await sock.sendMessage(remoteJid, { text: 'Nota inválida. Por favor, envie um número de 0 a 10.' });
+                            setConversationTimeout(contato, remoteJid);
+                            return;
+                        }
+
+                        // ##### ALTERAÇÃO AQUI: Acessando os dados corretamente #####
+                        const pesquisa = state.data.pesquisa;
+                        const totalInicial = state.data.totalPendentesInicial;
+
+                        pesquisa.Nota = nota;
+                        pesquisa.PesquisaEnviada = 'TRUE';
+                        pesquisa.DataResposta = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+                        await pesquisa.save();
+
+                        await sock.sendMessage(remoteJid, { text: '✅ Obrigado pela sua avaliação!' });
+                        
+                        // ##### LÓGICA CORRIGIDA: Não checa mais a planilha, usa a memória #####
+                        const pesquisasRestantes = totalInicial - 1;
+
+                        if (pesquisasRestantes > 0) {
+                            const usuarioAtual = await obterUsuario(contato);
+                            userState[contato] = { stage: 'aguardandoContinuar', data: usuarioAtual };
+                            await sock.sendMessage(remoteJid, { text: 'Você ainda tem outras pesquisas pendentes. Deseja continuar avaliando? (Sim/Não)' });
+                            setConversationTimeout(contato, remoteJid);
+                        } else {
+                            delete userState[contato];
+                            clearConversationTimeout(contato);
+                            await sock.sendMessage(remoteJid, { text: 'Você concluiu todas as suas avaliações. Muito obrigado!' });
+                        }
                     }
-
-                    const pesquisa = state.data;
-                    pesquisa.Nota = nota;
-                    pesquisa.PesquisaEnviada = 'TRUE';
-                    pesquisa.DataResposta = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-                    await pesquisa.save();
-
-                    await sock.sendMessage(remoteJid, { text: '✅ Obrigado pela sua avaliação!' });
-                    
-                    const usuarioAtual = await obterUsuario(contato);
-                    const cpfDoUsuario = usuarioAtual['CPF (xxx.xxx.xxx-xx)'];
-                    const doc = await loadSpreadsheet();
-                    const sheetEventos = doc.sheetsByTitle['Eventos'];
-                    const rowsEventos = await sheetEventos.getRows();
-                    const pesquisasPendentes = rowsEventos.filter(row => row['CPF (xxx.xxx.xxx-xx)'] === cpfDoUsuario && (row.PesquisaEnviada || '').toUpperCase() !== 'TRUE');
-
-                    if (pesquisasPendentes.length > 0) {
-                        userState[contato] = { stage: 'aguardandoContinuar', data: usuarioAtual };
-                        await sock.sendMessage(remoteJid, { text: 'Você ainda tem outras pesquisas pendentes. Deseja continuar avaliando? (Sim/Não)' });
-                        setConversationTimeout(contato, remoteJid);
-                    } else {
-                        delete userState[contato];
-                        clearConversationTimeout(contato);
-                        await sock.sendMessage(remoteJid, { text: 'Você concluiu todas as suas avaliações. Muito obrigado!' });
-                    }
-                }
                 else if (state.stage === 'aguardandoContinuar') {
                     if (textoMsg.toLowerCase() === 'sim') {
                         await iniciarFluxoDePesquisa(contato, remoteJid, state.data);
