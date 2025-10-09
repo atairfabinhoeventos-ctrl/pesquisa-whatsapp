@@ -446,16 +446,50 @@ async function connectToWhatsApp() {
         const state = userState[contato];
         const resposta = textoMsg.toLowerCase();
         
-        // ... (todo o código que lida com os fluxos existentes) ...
+        const menuAdmin = `Olá, ${usuario?.NomeCompleto.split(' ')[0]}! 👋\n*Perfil: ADMIN_GERAL*\n\nSelecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa\n*3.* Alterar Perfil de Usuário\n*4.* Gerenciar Blacklist\n*5.* Credenciar Participante\n*6.* Realizar Substituição\n*7.* Exportar Credenciados (Excel)\n*8.* Verificar Versão do Bot\n*0.* Sair`;
+        const menuLider = `Olá, ${usuario?.NomeCompleto.split(' ')[0]}! 👋\n*Perfil: LÍDER DE EVENTO*\n\nSelecione uma opção:\n\n*1.* Cadastrar Novo Evento\n*2.* Gerenciar Blacklist\n*3.* Credenciar Participante\n*4.* Realizar Substituição\n*5.* Exportar Credenciados (Excel)\n*0.* Sair`;
+        const menuCoordenador = `Olá, ${usuario?.NomeCompleto.split(' ')[0]}! 👋\n*Perfil: COORDENADOR*\n\nSelecione uma opção:\n\n*1.* Credenciar Participante\n*2.* Realizar Substituição\n*0.* Sair`;
 
-        // ... (Adicione a nova lógica de avaliação aqui) ...
-        
         // ==================================================================
-        // Adicione o novo fluxo de Avaliação aqui, ANTES do else final
+        // Lógica de Avaliação
         // ==================================================================
         if (state && state.stage.startsWith('pesquisa_')) {
-            // ... (coloque a lógica do fluxo de avaliação aqui, conforme a resposta anterior) ...
+            if (state.stage === 'pesquisa_aguardandoEscolhaEvento') {
+                const escolha = parseInt(textoMsg);
+                if (!isNaN(escolha) && escolha > 0 && escolha <= state.data.length) {
+                    const pesquisa = state.data[escolha - 1];
+                    userState[contato] = { stage: 'pesquisa_aguardandoNota', data: pesquisa };
+                    await sock.sendMessage(remoteJid, { text: `Ótimo! Agora, para o evento "${pesquisa.NomeEvento}", avalie o líder *${pesquisa.NomeLider}* com uma nota de 0 a 10? ✨` });
+                    setConversationTimeout(contato, remoteJid);
+                } else {
+                    await sock.sendMessage(remoteJid, { text: 'Opção inválida. Por favor, escolha um número válido da lista.' });
+                    setConversationTimeout(contato, remoteJid);
+                }
+            } else if (state.stage === 'pesquisa_aguardandoNota') {
+                const nota = parseInt(textoMsg);
+                if (isNaN(nota) || nota < 0 || nota > 10) {
+                    await sock.sendMessage(remoteJid, { text: 'Nota inválida. Por favor, responda com um número de 0 a 10.' });
+                    setConversationTimeout(contato, remoteJid);
+                } else {
+                    const doc = await loadSpreadsheet();
+                    const sheetEventos = doc.sheetsByTitle['Eventos'];
+                    const rows = await sheetEventos.getRows();
+                    const row = rows.find(r => r.id === state.data.id);
+                    if (row) {
+                        row.Nota = nota;
+                        row.PesquisaEnviada = 'TRUE';
+                        row.DataResposta = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+                        await row.save();
+                        await sock.sendMessage(remoteJid, { text: '✅ Agradecemos a sua avaliação! Sua opinião é muito importante para nós. Até a próxima! 👋' });
+                    } else {
+                        await sock.sendMessage(remoteJid, { text: 'Ocorreu um erro ao salvar sua avaliação. Por favor, tente novamente mais tarde.' });
+                    }
+                    delete userState[contato];
+                    clearConversationTimeout(contato);
+                }
+            }
         }
+
         // ==================================================================
         // Lógica de Cadastro Inicial
         // ==================================================================
@@ -473,12 +507,9 @@ async function connectToWhatsApp() {
                     if (perfilExistente === 'FREELANCER') {
                          await iniciarFluxoDePesquisa(contato, remoteJid, usuarioExistente);
                     } else {
-                         // Lógica para usuários que já existem mas não são freelancers
                          await sock.sendMessage(remoteJid, { text: `Olá, ${usuarioExistente.NomeCompleto.split(' ')[0]}! Você já está cadastrado como ${perfilExistente}. Você pode iniciar um novo fluxo enviando uma mensagem novamente.` });
-                         // O menu correspondente ao perfil será mostrado na próxima mensagem
                     }
                 } else {
-                    // Novo Usuário, precisa cadastrar
                     state.stage = 'aguardandoNomeCompleto';
                     state.data.cpf = resultado.cpfFormatado;
                     await sock.sendMessage(remoteJid, { text: 'CPF validado! Agora, por favor, me diga seu *nome completo*.' });
@@ -490,8 +521,155 @@ async function connectToWhatsApp() {
             }
         }
         else if (state && state.stage === 'aguardandoNomeCompleto') {
-             // ... (continuação da lógica de cadastro, que já deve existir no seu código) ...
+            const nomeCompleto = textoMsg.trim();
+            if (nomeCompleto.length < 5) {
+                await sock.sendMessage(remoteJid, { text: 'O nome completo parece ser muito curto. Por favor, digite seu nome completo.' });
+                setConversationTimeout(contato, remoteJid);
+                return;
+            }
+
+            const doc = await loadSpreadsheet();
+            const sheetCadastros = doc.sheetsByTitle['Cadastros'];
+            const sheetEventos = doc.sheetsByTitle['Eventos'];
+            const sheetCredenciamento = doc.sheetsByTitle['Credenciamento'];
+
+            await sheetCadastros.addRow({
+                'IDContatoWhatsApp': contato,
+                'NomeCompleto': nomeCompleto,
+                'CPF (xxx.xxx.xxx-xx)': state.data.cpf,
+                'DataCadastro': new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+                'Perfil': 'FREELANCER'
+            });
+
+            await sock.sendMessage(remoteJid, { text: `✅ Cadastro concluído com sucesso, ${nomeCompleto.split(' ')[0]}! Seu perfil padrão é *FREELANCER*.` });
+            
+            const usuarioRecemCadastrado = { 'CPF (xxx.xxx.xxx-xx)': state.data.cpf, 'NomeCompleto': nomeCompleto };
+            await iniciarFluxoDePesquisa(contato, remoteJid, usuarioRecemCadastrado);
+            
+            delete userState[contato];
+            clearConversationTimeout(contato);
         }
+
+        // ==================================================================
+        // Lógica dos Fluxos de Credenciamento e Substituição
+        // ==================================================================
+        else if (state && state.stage === 'coordenador_menu') {
+            // ... (lógica existente para o menu de Coordenador) ...
+        } else if (state && state.stage === 'lider_menu') {
+            // ... (lógica existente para o menu de Líder) ...
+        } else if (state && state.stage === 'admin_menu') {
+            // ... (lógica existente para o menu de Admin) ...
+        } else if (state && state.stage === 'credenciamento_pede_evento') {
+            const doc = await loadSpreadsheet();
+            const sheetEventosCadastrados = doc.sheetsByTitle['Eventos_Cadastrados'];
+            const rows = await sheetEventosCadastrados.getRows();
+            const eventosDisponiveis = rows.sort((a,b) => parseDate(b['Data do Evento']) - parseDate(a['Data do Evento']));
+            if (eventosDisponiveis.length === 0) { delete userState[contato]; await sock.sendMessage(remoteJid, { text: 'Nenhum evento cadastrado para credenciamento no momento.'}); return; }
+            
+            const escolha = parseInt(textoMsg);
+            if (!isNaN(escolha) && escolha > 0 && escolha <= eventosDisponiveis.length) {
+                const eventoEscolhido = eventosDisponiveis[escolha - 1];
+                state.data = {
+                    nomeEvento: eventoEscolhido['Nome do Evento'],
+                    funcoesDisponiveis: eventoEscolhido['Funções Disponíveis'].split(',').map(f => f.trim())
+                };
+                state.stage = 'credenciamento_pede_cpf';
+                await sock.sendMessage(remoteJid, { text: `✅ Evento *${state.data.nomeEvento}* selecionado.\n\nAgora, por favor, envie a *lista de CPFs* que deseja credenciar (um por linha, ou separados por vírgula/espaço).` });
+                setConversationTimeout(contato, remoteJid);
+            } else {
+                await sock.sendMessage(remoteJid, { text: `Opção inválida. Por favor, escolha um número de 1 a ${eventosDisponiveis.length}.` });
+                setConversationTimeout(contato, remoteJid);
+            }
+        } else if (state && state.stage === 'credenciamento_pede_cpf') {
+            if (resposta === 'cancelar') { delete userState[contato]; await sock.sendMessage(remoteJid, { text: 'Ação cancelada.' }); return; }
+
+            const cpfsEncontrados = textoMsg.match(/(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{11})/g) || [];
+            if (cpfsEncontrados.length === 0) {
+                await sock.sendMessage(remoteJid, { text: `Nenhum CPF válido encontrado na mensagem. Por favor, envie uma lista de CPFs (apenas números ou no formato xxx.xxx.xxx-xx).` });
+                setConversationTimeout(contato, remoteJid);
+                return;
+            }
+            
+            let cpfsValidos = [];
+            let cpfsInvalidos = [];
+
+            for (const cpf of cpfsEncontrados) {
+                const resultado = validarEFormatarCPF(cpf);
+                if (resultado.valido) {
+                    cpfsValidos.push(resultado.cpfFormatado);
+                } else {
+                    cpfsInvalidos.push(cpf);
+                }
+            }
+            
+            cpfsValidos = [...new Set(cpfsValidos)];
+
+            if (cpfsValidos.length === 0) {
+                await sock.sendMessage(remoteJid, { text: `Todos os CPFs enviados são inválidos ou estão em formato incorreto. Por favor, tente novamente.\n\nInválidos: ${cpfsInvalidos.join(', ')}` });
+                setConversationTimeout(contato, remoteJid);
+                return;
+            }
+            
+            state.data.listaCpfs = cpfsValidos;
+            state.data.indiceAtual = 0;
+            
+            let resumoMsg = `Encontrei *${cpfsValidos.length}* CPFs válidos para processar.`;
+            if (cpfsInvalidos.length > 0) {
+                resumoMsg += `\n*${cpfsInvalidos.length}* CPFs foram ignorados por serem inválidos.`;
+            }
+            resumoMsg += `\n\nIniciando o credenciamento...`;
+            
+            await sock.sendMessage(remoteJid, { text: resumoMsg });
+            await processarCpfDaLista(contato, remoteJid);
+        } else if (state && state.stage === 'credenciamento_confirma_pessoa') {
+            if (['sim', 's'].includes(resposta)) {
+                state.stage = 'credenciamento_pede_funcao';
+                let textoFuncoes = `👍 Certo! Agora, escolha a função para *${state.data.nomeCompletoAtual}*:\n\n`;
+                state.data.funcoesDisponiveis.forEach((funcao, index) => {
+                    textoFuncoes += `*${index + 1}.* ${funcao}\n`;
+                });
+                await sock.sendMessage(remoteJid, { text: textoFuncoes });
+                setConversationTimeout(contato, remoteJid);
+            } else if (['nao', 'n'].includes(resposta)) {
+                await sock.sendMessage(remoteJid, { text: `Ok, participante *${state.data.nomeCompletoAtual}* ignorado. Pulando para o próximo...` });
+                state.data.indiceAtual++;
+                await processarCpfDaLista(contato, remoteJid);
+            } else {
+                await sock.sendMessage(remoteJid, { text: "Opção inválida. Por favor, responda 'Sim' ou 'Não'." });
+                setConversationTimeout(contato, remoteJid);
+            }
+        } else if (state && state.stage === 'credenciamento_pede_funcao') {
+            const escolha = parseInt(textoMsg);
+            if (!isNaN(escolha) && escolha > 0 && escolha <= state.data.funcoesDisponiveis.length) {
+                const funcaoEscolhida = state.data.funcoesDisponiveis[escolha - 1];
+                
+                const doc = await loadSpreadsheet();
+                const sheetCredenciamento = doc.sheetsByTitle['Credenciamento'];
+                await sheetCredenciamento.addRow({
+                    'Nome do Evento': state.data.nomeEvento,
+                    'CPF': state.data.cpfAtual,
+                    'Nome Completo': state.data.nomeCompletoAtual,
+                    'Função': funcaoEscolhida,
+                    'Credenciado Por': usuario.NomeCompleto,
+                    'Data do Credenciamento': new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+                });
+                
+                await sock.sendMessage(remoteJid, { text: `✅ *${state.data.nomeCompletoAtual}* credenciado(a) como *${funcaoEscolhida}*!` });
+                
+                state.data.indiceAtual++;
+                await processarCpfDaLista(contato, remoteJid);
+
+            } else {
+                await sock.sendMessage(remoteJid, { text: `Opção inválida. Escolha um número de 1 a ${state.data.funcoesDisponiveis.length}.` });
+                setConversationTimeout(contato, remoteJid);
+            }
+        }
+
+        // ... (outros fluxos de menu e estados) ...
+
+        // ==================================================================
+        // Lógica de Direcionamento Inicial (para usuários que não estão em um fluxo ativo)
+        // ==================================================================
         else {
             if (perfil === 'ADMIN_GERAL') {
                 userState[contato] = { stage: 'admin_menu' };
@@ -508,7 +686,6 @@ async function connectToWhatsApp() {
             } else if (perfil === 'FREELANCER') {
                 await iniciarFluxoDePesquisa(contato, remoteJid, usuario);
             } else {
-                // Primeira mensagem de um usuário não cadastrado
                 userState[contato] = { stage: 'aguardandoCPF', data: {} };
                 const msgBoasVindas = '*FABINHO EVENTOS*\n\nOlá! 👋 Para acessar nosso sistema, precisamos fazer um rápido cadastro.\n\nPor favor, digite seu *CPF* (apenas os números).';
                 await sock.sendMessage(remoteJid, { text: msgBoasVindas });
