@@ -331,7 +331,7 @@ async function connectToWhatsApp() {
             const perfil = (usuario?.Perfil || '').toUpperCase();
             const state = userState[contato];
             
-            const menuAdmin = `Olá, ${usuario?.NomeCompleto.split(' ')[0]}! 👋\n*Perfil: ADMIN_GERAL*\n\nSelecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa\n*3.* Alterar Perfil de Usuário\n*4.* Verificar Versão do Bot\n*0.* Sair`;
+            const menuAdmin = `Olá, ${usuario?.NomeCompleto.split(' ')[0]}! 👋\n*Perfil: ADMIN_GERAL*\n\nSelecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa\n*3.* Alterar Perfil de Usuário\n*0.* Sair`;
 
             if (state) {
                 // ########## FLUXO DE CADASTRO DE NOVO USUÁRIO ##########
