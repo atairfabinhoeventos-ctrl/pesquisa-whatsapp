@@ -255,7 +255,8 @@ async function iniciarFluxoDePesquisa(contato, remoteJid, usuario) {
         const pesquisasPendentes = rowsEventos.filter(row => (row['CPF (xxx.xxx.xxx-xx)'] || '').trim() === cpfDoUsuario && (row.PesquisaEnviada || '').toUpperCase() !== 'TRUE' && (row.NomeEvento || '').trim() !== 'ADMINISTRACAOGERAL');
         const footer = '\n\n\n*_Fabinho Eventos_*';
         if (pesquisasPendentes.length === 0) {
-            const msg = `Olá, ${usuario.NomeCompleto.split(' ')[0]}! 👋\n\nVerificamos aqui e não há pesquisas de satisfação pendentes para você no momento.\n\n${footer}`;
+            const msg = `Olá, ${usuario.NomeCompleto.split(' ')[0]}! 👋\n\nVerificamos aqui e não há pesquisas de satisfação pendentes para você no momento.\n\nPara ficar por dentro das novidades e futuros eventos, siga nosso Instagram!
+➡️ https://www.instagram.com/eventos.fabinho/ \n\n${footer}`;
             await sock.sendMessage(remoteJid, { text: msg });
             delete userState[contato];
             return;
