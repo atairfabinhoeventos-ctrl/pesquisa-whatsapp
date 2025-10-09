@@ -453,6 +453,9 @@ async function connectToWhatsApp() {
         // ==================================================================
         // Lógica de Avaliação
         // ==================================================================
+        // ==================================================================
+        // Lógica de Avaliação (CORRIGIDA)
+        // ==================================================================
         if (state && state.stage.startsWith('pesquisa_')) {
             if (state.stage === 'pesquisa_aguardandoEscolhaEvento') {
                 const escolha = parseInt(textoMsg);
@@ -474,7 +477,12 @@ async function connectToWhatsApp() {
                     const doc = await loadSpreadsheet();
                     const sheetEventos = doc.sheetsByTitle['Eventos'];
                     const rows = await sheetEventos.getRows();
-                    const row = rows.find(r => r.id === state.data.id);
+                    // O seu código original não tem um identificador único, então a busca por ID pode não funcionar.
+                    // Uma forma mais robusta é usar o CPF e o nome do evento/líder para encontrar a linha correta.
+                    const row = rows.find(r => 
+                        (r['CPF (xxx.xxx.xxx-xx)'] || '').trim() === state.data['CPF (xxx.xxx.xxx-xx)'] &&
+                        (r.NomeEvento || '').trim() === state.data.NomeEvento
+                    );
                     if (row) {
                         row.Nota = nota;
                         row.PesquisaEnviada = 'TRUE';
@@ -484,6 +492,10 @@ async function connectToWhatsApp() {
                     } else {
                         await sock.sendMessage(remoteJid, { text: 'Ocorreu um erro ao salvar sua avaliação. Por favor, tente novamente mais tarde.' });
                     }
+                    
+                    // ==================================================================
+                    // CORREÇÃO: Limpa o estado da conversa APÓS a conclusão do fluxo
+                    // ==================================================================
                     delete userState[contato];
                     clearConversationTimeout(contato);
                 }
@@ -528,22 +540,37 @@ async function connectToWhatsApp() {
                 return;
             }
 
+            state.stage = 'aguardandoTelefone';
+            state.data.nomeCompleto = nomeCompleto;
+            await sock.sendMessage(remoteJid, { text: `Ótimo, ${nomeCompleto.split(' ')[0]}! Agora, por favor, envie o seu *número de telefone com DDD* (somente os números).` });
+            setConversationTimeout(contato, remoteJid);
+        }
+        else if (state && state.stage === 'aguardandoTelefone') {
+            const telefone = textoMsg.trim().replace(/\D/g, ''); // Remove caracteres não numéricos
+            if (telefone.length < 10 || telefone.length > 13) {
+                await sock.sendMessage(remoteJid, { text: 'Número de telefone inválido. Por favor, envie um número com DDD (ex: 11999999999).' });
+                setConversationTimeout(contato, remoteJid);
+                return;
+            }
+
             const doc = await loadSpreadsheet();
             const sheetCadastros = doc.sheetsByTitle['Cadastros'];
             const sheetEventos = doc.sheetsByTitle['Eventos'];
             const sheetCredenciamento = doc.sheetsByTitle['Credenciamento'];
 
+            // Adiciona o novo usuário na planilha de Cadastros
             await sheetCadastros.addRow({
                 'IDContatoWhatsApp': contato,
-                'NomeCompleto': nomeCompleto,
+                'NomeCompleto': state.data.nomeCompleto,
                 'CPF (xxx.xxx.xxx-xx)': state.data.cpf,
+                'Telefone': telefone, // Salva o telefone
                 'DataCadastro': new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-                'Perfil': 'FREELANCER'
+                'Perfil': 'FREELANCER' // Define o perfil padrão como Freelancer
             });
 
-            await sock.sendMessage(remoteJid, { text: `✅ Cadastro concluído com sucesso, ${nomeCompleto.split(' ')[0]}! Seu perfil padrão é *FREELANCER*.` });
+            await sock.sendMessage(remoteJid, { text: `✅ Cadastro concluído com sucesso, ${state.data.nomeCompleto.split(' ')[0]}! Seu perfil padrão é *FREELANCER*.` });
             
-            const usuarioRecemCadastrado = { 'CPF (xxx.xxx.xxx-xx)': state.data.cpf, 'NomeCompleto': nomeCompleto };
+            const usuarioRecemCadastrado = { 'CPF (xxx.xxx.xxx-xx)': state.data.cpf, 'NomeCompleto': state.data.nomeCompleto, 'Telefone': telefone };
             await iniciarFluxoDePesquisa(contato, remoteJid, usuarioRecemCadastrado);
             
             delete userState[contato];
