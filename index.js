@@ -258,12 +258,11 @@ async function iniciarFluxoDePesquisa(contato, remoteJid, usuario) {
         const totalPendentes = pesquisasPendentes.length; // Guarda o total
 
         if (totalPendentes === 0) {
-            const msg = `Olá, ${usuario.NomeCompleto.split(' ')[0]}! 👋\n\nVerificamos aqui e não há pesquisas de satisfação pendentes para você no momento.\n\nPara ficar por dentro das novidades e futuros eventos, siga nosso Instagram!
-➡️ https://www.instagram.com/eventos.fabinho/ \n\n${footer}`;
-            await sock.sendMessage(remoteJid, { text: msg });
-            delete userState[contato];
-            return;
-        }
+    const msg = `E aí, ${usuario.NomeCompleto.split(' ')[0]}! ✨\n\nPassando pra avisar que você já tá em dia com a gente, nenhuma pesquisa pendente por aqui. 😎\n\nPra ficar por dentro de tudo que vem por aí, já segue a gente no Insta! 🤘\n➡️ https://www.instagram.com/eventos.fabinho/\n\n*Fabinho Eventos*`;
+    await sock.sendMessage(remoteJid, { text: msg });
+    delete userState[contato];
+    return;
+}
 
         if (totalPendentes === 1) {
             const pesquisa = pesquisasPendentes[0];
@@ -427,11 +426,13 @@ async function connectToWhatsApp() {
                         userState[contato] = { stage: 'aguardandoContinuar', data: usuarioAtual };
                         await sock.sendMessage(remoteJid, { text: 'Você ainda tem outras pesquisas pendentes. Deseja continuar avaliando? (Sim/Não)' });
                         setConversationTimeout(contato, remoteJid);
-                    } else {
-                        delete userState[contato];
-                        clearConversationTimeout(contato);
-                        await sock.sendMessage(remoteJid, { text: 'Você concluiu todas as suas avaliações. Muito obrigado!' });
-                    }
+                    // ...
+                        } else {
+                            delete userState[contato];
+                            clearConversationTimeout(contato);
+                            const msgFinal = `É isso! ✅ Você concluiu todas as suas avaliações. Valeu demais pela força! 👊\n\nAgora, pra ficar por dentro de todas as novidades e não perder nenhum evento, acompanhe tudo pelo nosso Instagram!\n➡️ https://www.instagram.com/eventos.fabinho/\n\n*Fabinho Eventos*`;
+                            await sock.sendMessage(remoteJid, { text: msgFinal });
+                        }
                 }
                 else if (state.stage === 'aguardandoContinuar') {
                     if (textoMsg.toLowerCase() === 'sim') {
