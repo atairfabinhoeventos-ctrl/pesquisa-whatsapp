@@ -365,7 +365,7 @@ async function connectToWhatsApp() {
                         'IDContatoWhatsApp': contato,
                         'CPF (xxx.xxx.xxx-xx)': state.data.cpf,
                         'NomeCompleto': state.data.nome,
-                        'Telefone': state.data.telefone,
+                        'TelefoneInformado': state.data.telefone,
                         'Perfil': 'FREELANCER'
                     });
 
@@ -573,7 +573,7 @@ async function connectToWhatsApp() {
 
                     if (novasLinhas.length > 0) {
                         await sheetEventos.addRows(novasLinhas);
-                        await sock.sendMessage(remoteJid, { text: `✅ Pesquisa para o evento "${state.data.nomeEvento}" cadastrada com sucesso para ${novasLinhas.length} CPFs!` });
+                        await sock.sendMessage(remoteJid, { text: `✅ Pesquisa para o evento "${state.data.nomeEvento}", com o líder "${state.data.nomeLider}", cadastrada com sucesso para ${novasLinhas.length} CPFs!` });
                     } else {
                         await sock.sendMessage(remoteJid, { text: 'Nenhum CPF válido foi processado.' });
                     }
