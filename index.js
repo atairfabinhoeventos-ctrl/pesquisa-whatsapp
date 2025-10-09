@@ -435,7 +435,7 @@ async function connectToWhatsApp() {
                         } else {
                             delete userState[contato];
                             clearConversationTimeout(contato);
-                            await sock.sendMessage(remoteJid, { text: 'Você concluiu todas as suas avaliações. Muito obrigado! \n\nPara ficar por dentro das novidades e futuros eventos, siga nosso Instagram! ➡️ https://www.instagram.com/eventos.fabinho/ \n\n${footer}' });
+                            await sock.sendMessage(remoteJid, { text: 'Você concluiu todas as suas avaliações. Muito obrigado! \n\nPara ficar por dentro das novidades e futuros eventos, siga nosso Instagram! ➡️ https://www.instagram.com/eventos.fabinho/}' });
                         }
                     }
                 else if (state.stage === 'aguardandoContinuar') {
