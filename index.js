@@ -112,6 +112,8 @@ async function obterUsuario(contato) {
 // Função para gerar a planilha Excel de credenciados
 async function gerarPlanilhaCredenciados(nomeDoEvento) {
     try {
+        console.log(`[DEBUG] Iniciando geração do Excel para o evento: "${nomeDoEvento}"`); // <--- LOG 1 (Opcional, mas bom ter)
+
         const doc = await loadSpreadsheet();
         const sheetCredenciamento = doc.sheetsByTitle['Credenciamento'];
         if (!sheetCredenciamento) {
@@ -119,7 +121,13 @@ async function gerarPlanilhaCredenciados(nomeDoEvento) {
             return null;
         }
         const rows = await sheetCredenciamento.getRows();
+
+        console.log(`[DEBUG] Total de credenciados na planilha: ${rows.length}`); // <--- ADICIONE ESTE LOG
+
         const credenciadosDoEvento = rows.filter(row => row['Nome do Evento'] === nomeDoEvento);
+
+        console.log(`[DEBUG] Credenciados encontrados para "${nomeDoEvento}": ${credenciadosDoEvento.length}`); // <--- ADICIONE ESTE LOG
+
 
         if (credenciadosDoEvento.length === 0) {
             return null; // Retorna nulo se não houver dados para o evento
