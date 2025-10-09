@@ -332,7 +332,6 @@ async function connectToWhatsApp() {
             const perfil = (usuario?.Perfil || '').toUpperCase();
             const state = userState[contato];
             
-            // Menu Admin Simplificado
             const menuAdmin = `Olá, ${usuario?.NomeCompleto.split(' ')[0]}! 👋\n*Perfil: ADMIN_GERAL*\n\nSelecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa\n*3.* Alterar Perfil de Usuário\n*4.* Verificar Versão do Bot\n*0.* Sair`;
 
             if (state) {
@@ -390,11 +389,11 @@ async function connectToWhatsApp() {
                 // ########## FLUXO DE AVALIAÇÃO (PESQUISA) ##########
                 else if (state.stage === 'aguardandoEscolhaEvento') {
                     const escolha = parseInt(textoMsg);
-                    if (!isNaN(escolha) && escolha > 0 && escolha <= state.data.length) {
-                        const pesquisa = state.data[escolha - 1];
-                        const totalPendentes = state.data.totalPendentesInicial; // Pega o total que já guardamos
-
-                        userState[contato] = { stage: 'aguardandoNota', data: pesquisa };
+                    if (!isNaN(escolha) && escolha > 0 && escolha <= state.data.pesquisas.length) {
+                        const pesquisa = state.data.pesquisas[escolha - 1];
+                        const totalPendentes = state.data.totalPendentesInicial;
+                        
+                        userState[contato] = { stage: 'aguardandoNota', data: { pesquisa: pesquisa, totalPendentesInicial: totalPendentes } };
                         const pergunta = `Ok! Para o evento "${pesquisa.NomeEvento}", qual nota de 0 a 10 você daria para o líder *${pesquisa.NomeLider}*?`;
                         await sock.sendMessage(remoteJid, { text: pergunta });
                         setConversationTimeout(contato, remoteJid);
@@ -403,41 +402,37 @@ async function connectToWhatsApp() {
                         setConversationTimeout(contato, remoteJid);
                     }
                 }
-                // Localize este bloco no BLOCO 3 e substitua-o inteiramente
-
-                    else if (state.stage === 'aguardandoNota') {
-                        const nota = parseInt(textoMsg);
-                        if (isNaN(nota) || nota < 0 || nota > 10) {
-                            await sock.sendMessage(remoteJid, { text: 'Nota inválida. Por favor, envie um número de 0 a 10.' });
-                            setConversationTimeout(contato, remoteJid);
-                            return;
-                        }
-
-                        // ##### ALTERAÇÃO AQUI: Acessando os dados corretamente #####
-                        const pesquisa = state.data.pesquisa;
-                        const totalInicial = state.data.totalPendentesInicial;
-
-                        pesquisa.Nota = nota;
-                        pesquisa.PesquisaEnviada = 'TRUE';
-                        pesquisa.DataResposta = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-                        await pesquisa.save();
-
-                        await sock.sendMessage(remoteJid, { text: '✅ Obrigado pela sua avaliação!' });
-                        
-                        // ##### LÓGICA CORRIGIDA: Não checa mais a planilha, usa a memória #####
-                        const pesquisasRestantes = totalInicial - 1;
-
-                        if (pesquisasRestantes > 0) {
-                            const usuarioAtual = await obterUsuario(contato);
-                            userState[contato] = { stage: 'aguardandoContinuar', data: usuarioAtual };
-                            await sock.sendMessage(remoteJid, { text: 'Você ainda tem outras pesquisas pendentes. Deseja continuar avaliando? (Sim/Não)' });
-                            setConversationTimeout(contato, remoteJid);
-                        } else {
-                            delete userState[contato];
-                            clearConversationTimeout(contato);
-                            await sock.sendMessage(remoteJid, { text: 'Você concluiu todas as suas avaliações. Muito obrigado! \n\nPara ficar por dentro das novidades e futuros eventos, siga nosso Instagram! ➡️ https://www.instagram.com/eventos.fabinho/}' });
-                        }
+                else if (state.stage === 'aguardandoNota') {
+                    const nota = parseInt(textoMsg);
+                    if (isNaN(nota) || nota < 0 || nota > 10) {
+                        await sock.sendMessage(remoteJid, { text: 'Nota inválida. Por favor, envie um número de 0 a 10.' });
+                        setConversationTimeout(contato, remoteJid);
+                        return;
                     }
+
+                    const pesquisa = state.data.pesquisa;
+                    const totalInicial = state.data.totalPendentesInicial;
+
+                    pesquisa.Nota = nota;
+                    pesquisa.PesquisaEnviada = 'TRUE';
+                    pesquisa.DataResposta = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+                    await pesquisa.save();
+
+                    await sock.sendMessage(remoteJid, { text: '✅ Obrigado pela sua avaliação!' });
+                    
+                    const pesquisasRestantes = totalInicial - 1;
+
+                    if (pesquisasRestantes > 0) {
+                        const usuarioAtual = await obterUsuario(contato);
+                        userState[contato] = { stage: 'aguardandoContinuar', data: usuarioAtual };
+                        await sock.sendMessage(remoteJid, { text: 'Você ainda tem outras pesquisas pendentes. Deseja continuar avaliando? (Sim/Não)' });
+                        setConversationTimeout(contato, remoteJid);
+                    } else {
+                        delete userState[contato];
+                        clearConversationTimeout(contato);
+                        await sock.sendMessage(remoteJid, { text: 'Você concluiu todas as suas avaliações. Muito obrigado!' });
+                    }
+                }
                 else if (state.stage === 'aguardandoContinuar') {
                     if (textoMsg.toLowerCase() === 'sim') {
                         await iniciarFluxoDePesquisa(contato, remoteJid, state.data);
@@ -490,12 +485,8 @@ async function connectToWhatsApp() {
                             break;
                     }
                 }
-
-
-                // ##### CÓDIGO PARA ADICIONAR INÍCIO #####
                 else if (state.stage === 'admin_resultados_menu') {
                     let relatorio;
-                    // Remove o timeout, pois a ação será concluída agora ou o usuário voltará ao menu
                     clearConversationTimeout(contato);
 
                     switch (textoMsg) {
@@ -504,36 +495,33 @@ async function connectToWhatsApp() {
                             const ranking = await gerarRankingGeral();
                             relatorio = formatarRankingGeral(ranking);
                             await sock.sendMessage(remoteJid, { text: relatorio });
-                            delete userState[contato]; // Encerra a conversa após o relatório
+                            delete userState[contato];
                             break;
                         case '2':
                             await sock.sendMessage(remoteJid, { text: 'Gerando Resultado por Evento... 🗓️' });
                             const resultado = await gerarResultadoPorEvento();
                             relatorio = formatarResultadoPorEvento(resultado);
                             await sock.sendMessage(remoteJid, { text: relatorio });
-                            delete userState[contato]; // Encerra a conversa após o relatório
+                            delete userState[contato];
                             break;
                         case '3':
                             await sock.sendMessage(remoteJid, { text: 'Gerando Relatório de Adesão... 📈' });
                             const adesao = await gerarRelatorioDeAdesao();
                             relatorio = formatarRelatorioAdesao(adesao);
                             await sock.sendMessage(remoteJid, { text: relatorio });
-                            delete userState[contato]; // Encerra a conversa após o relatório
+                            delete userState[contato];
                             break;
                         case '0':
-                            // Volta para o menu anterior
                             state.stage = 'admin_menu';
                             await sock.sendMessage(remoteJid, { text: menuAdmin });
                             setConversationTimeout(contato, remoteJid);
                             break;
                         default:
                             await sock.sendMessage(remoteJid, { text: 'Opção inválida. Por favor, escolha uma das opções do menu.' });
-                            setConversationTimeout(contato, remoteJid); // Mantém o usuário neste menu para tentar de novo
+                            setConversationTimeout(contato, remoteJid);
                             break;
                     }
                 }
-
-                // ##### CÓDIGO PARA ADICIONAR (PARTE 1) INÍCIO #####
                 else if (state.stage === 'admin_cad_pesquisa_cpfs') {
                     const cpfs = textoMsg.split(/[\s,]+/).filter(cpf => cpf.trim() !== '');
                     if (cpfs.length === 0) {
@@ -586,7 +574,7 @@ async function connectToWhatsApp() {
 
                     if (novasLinhas.length > 0) {
                         await sheetEventos.addRows(novasLinhas);
-                        await sock.sendMessage(remoteJid, { text: `✅ Pesquisa para o evento "${state.data.nomeEvento}", com o líder "${state.data.nomeLider}", cadastrada com sucesso para ${novasLinhas.length} CPFs!` });
+                        await sock.sendMessage(remoteJid, { text: `✅ Pesquisa para o evento "${state.data.nomeEvento}" cadastrada com sucesso para ${novasLinhas.length} CPFs!` });
                     } else {
                         await sock.sendMessage(remoteJid, { text: 'Nenhum CPF válido foi processado.' });
                     }
@@ -594,10 +582,6 @@ async function connectToWhatsApp() {
                     delete userState[contato];
                     clearConversationTimeout(contato);
                 }
-                // ##### CÓDIGO PARA ADICIONAR (PARTE 1) FIM #####
-
-
-                // ##### CÓDIGO PARA ADICIONAR (PARTE 2) INÍCIO #####
                 else if (state.stage === 'admin_alt_perfil_pede_cpf') {
                     const resultadoValidacao = validarEFormatarCPF(textoMsg);
                     if (!resultadoValidacao.valido) {
@@ -650,27 +634,24 @@ async function connectToWhatsApp() {
                         setConversationTimeout(contato, remoteJid);
                     }
                 }
-                // ##### CÓDIGO PARA ADICIONAR (PARTE 2) FIM #####
 
-                // ##### CÓDIGO PARA ADICIONAR FIM #####
-
+            } else {
+                // Início de uma nova conversa
+                if (perfil === 'ADMIN_GERAL') {
+                    userState[contato] = { stage: 'admin_menu' };
+                    await sock.sendMessage(remoteJid, { text: menuAdmin });
+                    setConversationTimeout(contato, remoteJid);
+                } else { // Trata FREELANCER e qualquer outro perfil como padrão
+                    const usuarioExistente = await obterUsuario(contato);
+                    if (usuarioExistente) {
+                        await iniciarFluxoDePesquisa(contato, remoteJid, usuarioExistente);
                     } else {
-                        // Início de uma nova conversa
-                        if (perfil === 'ADMIN_GERAL') {
-                            userState[contato] = { stage: 'admin_menu' };
-                            await sock.sendMessage(remoteJid, { text: menuAdmin });
-                            setConversationTimeout(contato, remoteJid);
-                        } else { // Trata FREELANCER e qualquer outro perfil como padrão
-                            const usuarioExistente = await obterUsuario(contato);
-                            if (usuarioExistente) {
-                                await iniciarFluxoDePesquisa(contato, remoteJid, usuarioExistente);
-                            } else {
-                                userState[contato] = { stage: 'aguardandoCPF', data: {} };
-                                const msgBoasVindas = '*FABINHO EVENTOS*\n\nOlá! 👋 Para acessar nosso sistema, precisamos fazer um rápido cadastro.\n\nPor favor, digite seu *CPF* (apenas os números).';
-                                await sock.sendMessage(remoteJid, { text: msgBoasVindas });
-                                setConversationTimeout(contato, remoteJid);
-                            }
-                        }
+                        userState[contato] = { stage: 'aguardandoCPF', data: {} };
+                        const msgBoasVindas = '*FABINHO EVENTOS*\n\nOlá! 👋 Para acessar nosso sistema, precisamos fazer um rápido cadastro.\n\nPor favor, digite seu *CPF* (apenas os números).';
+                        await sock.sendMessage(remoteJid, { text: msgBoasVindas });
+                        setConversationTimeout(contato, remoteJid);
+                    }
+                }
             }
         } catch (error) {
             console.error(`[ERRO GERAL] Falha ao processar mensagem de ${contato}:`, error);
