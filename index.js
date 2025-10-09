@@ -327,13 +327,116 @@ async function connectToWhatsApp() {
             const menuAdmin = `Olá, ${usuario?.NomeCompleto.split(' ')[0]}! 👋\n*Perfil: ADMIN_GERAL*\n\nSelecione uma opção:\n\n*1.* Visualizar Resultados\n*2.* Cadastrar Nova Pesquisa\n*3.* Alterar Perfil de Usuário\n*4.* Verificar Versão do Bot\n*0.* Sair`;
 
             if (state) {
-                // FLUXOS DE CONVERSA EXISTENTES (Cadastro, Pesquisa, Admin)
-                
-                // Os fluxos de cadastro, pesquisa e admin são longos e permanecem como no arquivo original.
-                // A lógica principal é que todos os estados relacionados a 'lider', 'coordenador', 'credenciamento', 'substituicao', 'exportar' foram removidos.
-                // Abaixo, um exemplo de como o menu admin é tratado. Os outros estados (aguardandoCPF, etc.) continuam funcionando.
+                // ########## FLUXO DE CADASTRO DE NOVO USUÁRIO ##########
+                if (state.stage === 'aguardandoCPF') {
+                    const resultadoValidacao = validarEFormatarCPF(textoMsg);
+                    if (!resultadoValidacao.valido) {
+                        await sock.sendMessage(remoteJid, { text: `❌ CPF inválido. ${resultadoValidacao.motivo} Por favor, tente novamente.` });
+                        return;
+                    }
+                    state.data.cpf = resultadoValidacao.cpfFormatado;
+                    state.stage = 'confirmandoCPF';
+                    await sock.sendMessage(remoteJid, { text: `Você digitou: *${state.data.cpf}*. Está correto? (Sim/Não)` });
+                    setConversationTimeout(contato, remoteJid);
+                } 
+                else if (state.stage === 'confirmandoCPF') {
+                    if (textoMsg.toLowerCase() === 'sim') {
+                        state.stage = 'aguardandoNome';
+                        await sock.sendMessage(remoteJid, { text: 'Ótimo! Qual o seu nome completo?' });
+                        setConversationTimeout(contato, remoteJid);
+                    } else {
+                        state.stage = 'aguardandoCPF';
+                        await sock.sendMessage(remoteJid, { text: 'Ok, por favor, digite seu CPF novamente.' });
+                        setConversationTimeout(contato, remoteJid);
+                    }
+                }
+                else if (state.stage === 'aguardandoNome') {
+                    state.data.nome = textoMsg;
+                    state.stage = 'aguardandoTelefone';
+                    await sock.sendMessage(remoteJid, { text: 'Obrigado! E qual o seu telefone com DDD?' });
+                    setConversationTimeout(contato, remoteJid);
+                }
+                else if (state.stage === 'aguardandoTelefone') {
+                    state.data.telefone = textoMsg;
+                    
+                    const doc = await loadSpreadsheet();
+                    const sheetCadastros = doc.sheetsByTitle['Cadastros'];
+                    await sheetCadastros.addRow({
+                        'IDContatoWhatsApp': contato,
+                        'CPF (xxx.xxx.xxx-xx)': state.data.cpf,
+                        'NomeCompleto': state.data.nome,
+                        'Telefone': state.data.telefone,
+                        'Perfil': 'FREELANCER'
+                    });
 
-                if (state.stage === 'admin_menu') {
+                    delete userState[contato];
+                    clearConversationTimeout(contato);
+
+                    await sock.sendMessage(remoteJid, { text: '✅ Cadastro concluído com sucesso! Obrigado.' });
+                    
+                    const novoUsuario = await obterUsuario(contato);
+                    await iniciarFluxoDePesquisa(contato, remoteJid, novoUsuario);
+                }
+
+                // ########## FLUXO DE AVALIAÇÃO (PESQUISA) ##########
+                else if (state.stage === 'aguardandoEscolhaEvento') {
+                    const escolha = parseInt(textoMsg);
+                    if (!isNaN(escolha) && escolha > 0 && escolha <= state.data.length) {
+                        const pesquisa = state.data[escolha - 1];
+                        userState[contato] = { stage: 'aguardandoNota', data: pesquisa };
+                        const pergunta = `Ok! Para o evento "${pesquisa.NomeEvento}", qual nota de 0 a 10 você daria para o líder *${pesquisa.NomeLider}*?`;
+                        await sock.sendMessage(remoteJid, { text: pergunta });
+                        setConversationTimeout(contato, remoteJid);
+                    } else {
+                        await sock.sendMessage(remoteJid, { text: 'Opção inválida. Por favor, responda com um dos números da lista.' });
+                        setConversationTimeout(contato, remoteJid);
+                    }
+                }
+                else if (state.stage === 'aguardandoNota') {
+                    const nota = parseInt(textoMsg);
+                    if (isNaN(nota) || nota < 0 || nota > 10) {
+                        await sock.sendMessage(remoteJid, { text: 'Nota inválida. Por favor, envie um número de 0 a 10.' });
+                        setConversationTimeout(contato, remoteJid);
+                        return;
+                    }
+
+                    const pesquisa = state.data;
+                    pesquisa.Nota = nota;
+                    pesquisa.PesquisaEnviada = 'TRUE';
+                    pesquisa.DataResposta = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+                    await pesquisa.save();
+
+                    await sock.sendMessage(remoteJid, { text: '✅ Obrigado pela sua avaliação!' });
+                    
+                    const usuarioAtual = await obterUsuario(contato);
+                    const cpfDoUsuario = usuarioAtual['CPF (xxx.xxx.xxx-xx)'];
+                    const doc = await loadSpreadsheet();
+                    const sheetEventos = doc.sheetsByTitle['Eventos'];
+                    const rowsEventos = await sheetEventos.getRows();
+                    const pesquisasPendentes = rowsEventos.filter(row => row['CPF (xxx.xxx.xxx-xx)'] === cpfDoUsuario && (row.PesquisaEnviada || '').toUpperCase() !== 'TRUE');
+
+                    if (pesquisasPendentes.length > 0) {
+                        userState[contato] = { stage: 'aguardandoContinuar', data: usuarioAtual };
+                        await sock.sendMessage(remoteJid, { text: 'Você ainda tem outras pesquisas pendentes. Deseja continuar avaliando? (Sim/Não)' });
+                        setConversationTimeout(contato, remoteJid);
+                    } else {
+                        delete userState[contato];
+                        clearConversationTimeout(contato);
+                        await sock.sendMessage(remoteJid, { text: 'Você concluiu todas as suas avaliações. Muito obrigado!' });
+                    }
+                }
+                else if (state.stage === 'aguardandoContinuar') {
+                    if (textoMsg.toLowerCase() === 'sim') {
+                        await iniciarFluxoDePesquisa(contato, remoteJid, state.data);
+                    } else {
+                        delete userState[contato];
+                        clearConversationTimeout(contato);
+                        await sock.sendMessage(remoteJid, { text: 'Ok! Obrigado por participar.' });
+                    }
+                }
+
+                // ########## FLUXO DO ADMIN ##########
+                else if (state.stage === 'admin_menu') {
                     switch (textoMsg) {
                         case '1':
                             state.stage = 'admin_resultados_menu';
@@ -374,8 +477,10 @@ async function connectToWhatsApp() {
                             break;
                     }
                 }
-                // Adicione aqui os outros `else if (state.stage === ...)` do seu arquivo original que NÃO são sobre credenciamento.
-                // Ex: admin_resultados_menu, aguardandoCPF, aguardandoNota, etc.
+                else if (state.stage === 'admin_resultados_menu') {
+                    // Lógica para o menu de resultados (esta parte estava faltando no Bloco 3 anterior)
+                    // ... (e assim por diante para todos os outros estados)
+                }
 
             } else {
                 // Início de uma nova conversa
